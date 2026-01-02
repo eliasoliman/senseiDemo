@@ -162,7 +162,7 @@ async function createProject() {
 }
 */
   router.push({
-  path: '/editor', // o qualsiasi sia il path della pagina dove vuoi andare
+  path: '/editor',
   state: {
     videoFile: videoFile.value,
     projectName: projectName.value
