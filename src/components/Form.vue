@@ -63,7 +63,7 @@ async function createProject() {
     alert('Controlla i campi obbligatori.');
     return;
   }
-
+/*
   try {
     const formData = new FormData();
     formData.append('file', videoFile.value);
@@ -149,6 +149,7 @@ async function createProject() {
     }
 
     console.log('Processo completato!', subtitlesData);
+
     
   } catch (error) {
     console.error('Errore completo:', error);
@@ -158,6 +159,16 @@ async function createProject() {
     
     alert(`Errore: ${error.message}`);
   }
+}
+*/
+  router.push({
+  path: '/editor', // o qualsiasi sia il path della pagina dove vuoi andare
+  state: {
+    videoFile: videoFile.value,
+    projectName: projectName.value
+  }
+});
+
 }
 
 </script>

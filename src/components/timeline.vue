@@ -13,8 +13,10 @@ const cursorPosition = ref(0)
 const isDragging = ref(false)
 const videoDuration = ref(0)
 
-const zoomLevel = inject('zoomLevel', ref(1))
-const containerWidth = computed(() => `${zoomLevel.value * 100}%`)
+// Inietto la larghezza calcolata in Editor.vue
+const calculatedWidth = inject('calculatedWidth', ref(1200))
+
+const containerWidthStyle = computed(() => `${calculatedWidth.value}px`)
 
 const options = {
   "height": 1,
@@ -61,6 +63,11 @@ const syncWithVideo = () => {
 
   const video = props.videoElement
 
+  // Se il video ha già caricato i metadati, prendiamo subito la durata
+  if (video.duration) {
+    videoDuration.value = video.duration
+  }
+
   video.addEventListener('loadedmetadata', () => {
     videoDuration.value = video.duration
   })
@@ -73,6 +80,20 @@ const syncWithVideo = () => {
     }
   })
 }
+
+// Watcher per ridisegnare la timeline quando la durata cambia (caricamento iniziale)
+watch(videoDuration, () => {
+  if (waveSurfer.value) {
+    waveSurfer.value.zoom(1) 
+  }
+})
+
+// Watcher per ridisegnare quando si zooma (clic su SVG)
+watch(calculatedWidth, () => {
+  if (waveSurfer.value) {
+    waveSurfer.value.zoom(1)
+  }
+})
 
 const startDrag = (event: MouseEvent) => {
   isDragging.value = true
@@ -103,6 +124,7 @@ const updateCursorPosition = (event: MouseEvent) => {
 
 onMounted(() => {
   loadVideo()
+  if (props.videoElement) syncWithVideo()
   document.addEventListener('mousemove', onDrag)
   document.addEventListener('mouseup', stopDrag)
 })
@@ -120,7 +142,11 @@ watch(() => props.videoElement, (newVideo) => {
 
 <template>
   <div class="timeline-container">
-    <div ref="containerRef" class="timeline-wrapper" :style="{ width: containerWidth }">
+    <div 
+      ref="containerRef" 
+      class="timeline-wrapper" 
+      :style="{ width: containerWidthStyle }"
+    >
       <div 
         class="playhead" 
         :style="{ left: cursorPosition + '%' }"
@@ -138,13 +164,14 @@ watch(() => props.videoElement, (newVideo) => {
   display: flex;
   flex-direction: column;
   justify-content: center;
-  padding: 0 10px;
+  padding: 0;
   box-sizing: border-box;
   position: relative;
 }
 
 .timeline-wrapper {
-  min-width: 100%;
+  /* Assicuriamoci che non sia mai più piccola del calcolo */
+  min-width: v-bind(containerWidthStyle);
   position: relative;
   transition: width 0.3s ease;
 }
