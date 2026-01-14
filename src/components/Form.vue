@@ -34,18 +34,18 @@ import { ref } from 'vue'
 import axios from 'axios'
 import { useRouter } from 'vue-router'
 
+const videoLanguage = ref('');
+const targetLanguage = ref('');
 const router = useRouter()
 const videoFile = ref(null)
 const audioFile = ref(null)
 const projectName = ref('')
-const videoLanguage = ref('')
-const targetLanguage = ref('')
-const apiSubPost = 'http://localhost:3000/api/subtitles/post'
-const apiConverionPost = 'http://localhost:3000/api/conversion/post'
-const apiSubStatus = 'http://localhost:3000/api/subtitles/status'
-const apiConverionStatus = 'http://localhost:3000/api/conversion/status'
-const apiSubGet = 'http://localhost:3000/api/subtitles/get'
-const apiConverionGet = 'http://localhost:3000/api/conversion/get'
+const apiSubPost ='http://dh-server.fbk.eu:7380/create-subtitling-project'
+const apiConverionPost = 'http://dh-server.fbk.eu:7382/conversion-start'
+const apiSubStatus = 'http://dh-server.fbk.eu:7380/project-state'
+const apiConverionStatus = 'http://dh-server.fbk.eu:7382/conversion-status'
+const apiSubGet = 'http://dh-server.fbk.eu:7380/project-subtitles'
+const apiConverionGet = 'http://dh-server.fbk.eu:7382/conversion-out'
 
 
 function handleDrop(event) {
@@ -63,113 +63,86 @@ async function createProject() {
     alert('Controlla i campi obbligatori.');
     return;
   }
-/*
-  try {
-    const formData = new FormData();
-    formData.append('file', videoFile.value);
+    try {
+      const formData = new FormData();
+      formData.append('file', videoFile.value);
 
-    console.log('Inizio caricamento video...');
+      console.log('Inizio caricamento video...');
 
-    const conversionJob = await axios.post(apiConverionPost, formData, {
-      headers: {
-        'Content-Type': 'multipart/form-data'
+      const conversionJob = await axios.post(apiConverionPost, formData, {
+        headers: {
+          'Content-Type': 'multipart/form-data'
+        }
+      });
+
+      const jobId = conversionJob.data.id;
+      console.log('Job conversione creato:', jobId);
+
+      console.log('Attendo completamento conversione...');
+      
+      const maxAttempts = 300;
+      const pollInterval = 1000;
+      let conversionCompleted = false;
+      
+      for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+        console.log(`Controllo status (tentativo ${attempt})...`);
+        
+        const statusResponse = await axios.get(`${apiConverionStatus}?id=${jobId}`);
+        
+        console.log('Response:', statusResponse.data); 
+        
+        const { status, error } = statusResponse.data;
+        
+        console.log(`   Status attuale: ${status}`);
+        
+        if (status === 'completed') {
+          console.log('Conversione completata!');
+          conversionCompleted = true;
+          break;
+        }
+        
+        if (status === 'failed') {
+          throw new Error(error || 'Conversione fallita');
+        }
+        
+        await new Promise(resolve => setTimeout(resolve, pollInterval));
       }
-    });
 
-    console.log('Job conversione creato:', conversionJob.data);
-    const jobId = conversionJob.data.id;
+      if (!conversionCompleted) {
+        throw new Error('Timeout: conversione non completata in 5 minuti');
+      }
 
-    console.log('Attendo conversione audio...');
-    let audioData = null;
-    let attempts = 0;
-    const maxAttempts = 60; 
-    
-    while (attempts < maxAttempts) {
-      attempts++;
-      console.log(`Tentativo ${attempts}/${maxAttempts}...`);
+      console.log('Recupero file audio convertito...');
+
+      const audioResponse = await axios.get(`${apiConverionGet}?id=${jobId}`);
+      const audioData = audioResponse.data;
       
-      const checkRes = await axios.get(`${apiConverionGet}/${jobId}`);
-      console.log('Stato conversione:', checkRes.data);
+      console.log('Audio pronto!');
+
+      const formDataa = new FormData();
+
+      formDataa.append('audiofile', audioData);
+      formDataa.append('source', videoLanguage.value);
+      formDataa.append('target', targetLanguage.value);
+
+      const response = await axios.post(apiSubPost, formDataa, {
+        headers: {
+          'Content-Type': 'multipart/form-data'
+        }
+      }); 
+      console.log('Project ID:', response.data.id);
+
+
+
+    } catch (error) {
+      console.error('Errore completo:', error);
+      console.error('Risposta server:', error.response?.data);
+      console.error('Status HTTP:', error.response?.status);
+      console.error('URL chiamato:', error.config?.url);
       
-      if (checkRes.data?.url || checkRes.data?.status === 'completed') {
-        audioData = checkRes.data;
-        console.log('Audio pronto!', audioData);
-        break;
-      }
-      
-      if (checkRes.data?.status === 'failed') {
-        throw new Error('Conversione audio fallita');
-      }
-      
-      await new Promise(resolve => setTimeout(resolve, 3000));
+      alert(`Errore: ${error.message}`);
     }
-
-    if (!audioData) {
-      throw new Error('Timeout: conversione audio troppo lunga');
-    }
-
-    audioFile.value = audioData; 
-    
-    console.log('Avvio generazione sottotitoli...');
-    const subsJob = await axios.post(apiSubPost, {
-      audiofile: audioData.url, 
-      source: videoLanguage.value,
-      target: targetLanguage.value,
-    });
-    
-    console.log('Job sottotitoli creato:', subsJob.data);
-    const subsJobId = subsJob.data.id;
-    
-    console.log('Attendo generazione sottotitoli...');
-    let subtitlesData = null;
-    attempts = 0;
-
-    while (attempts < maxAttempts) {
-      attempts++;
-      console.log(`Tentativo ${attempts}/${maxAttempts}...`);
-      
-      const checkRes = await axios.get(`${apiSubGet}/${subsJobId}`);
-      console.log('Stato sottotitoli:', checkRes.data);
-      
-      if (checkRes.data?.subtitles || checkRes.data?.status === 'completed') {
-        subtitlesData = checkRes.data;
-        console.log('Sottotitoli pronti!', subtitlesData);
-        break;
-      }
-      
-      if (checkRes.data?.status === 'failed') {
-        throw new Error('Generazione sottotitoli fallita');
-      }
-      
-      await new Promise(resolve => setTimeout(resolve, 3000));
-    }
-
-    if (!subtitlesData) {
-      throw new Error('Timeout: generazione sottotitoli troppo lunga');
-    }
-
-    console.log('Processo completato!', subtitlesData);
-
-    
-  } catch (error) {
-    console.error('Errore completo:', error);
-    console.error('Risposta server:', error.response?.data);
-    console.error('Status:', error.response?.status);
-    console.error('Headers:', error.response?.headers);
-    
-    alert(`Errore: ${error.message}`);
   }
-}
-*/
-  router.push({
-  path: '/editor',
-  state: {
-    videoFile: videoFile.value,
-    projectName: projectName.value
-  }
-});
-
-}
 
 </script>
 
