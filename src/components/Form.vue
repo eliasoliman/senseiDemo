@@ -109,19 +109,23 @@ async function createProject() {
       }
 
       if (!conversionCompleted) {
-        throw new Error('Timeout: conversione non completata in 5 minuti');
+        throw new Error('Timeout: conversione non completata');
       }
 
       console.log('Recupero file audio convertito...');
 
-      const audioResponse = await axios.get(`${apiConverionGet}?id=${jobId}`);
+      const audioResponse = await axios.get(`${apiConverionGet}?id=${jobId}`, {
+      responseType: 'blob'  
+      });
+
       const audioData = audioResponse.data;
       
       console.log('Audio pronto!');
+      console.log(typeof audioData)
 
       const formDataa = new FormData();
 
-      formDataa.append('audiofile', audioData);
+      formDataa.append('audiofile', audioData, 'audio.mp3');
       formDataa.append('source', videoLanguage.value);
       formDataa.append('target', targetLanguage.value);
 
@@ -130,8 +134,62 @@ async function createProject() {
           'Content-Type': 'multipart/form-data'
         }
       }); 
-      console.log('Project ID:', response.data.id);
+      const id= response.data.id;
+      
 
+      const maxAttemptss = 10;
+      const pollIntervall = 1000;
+      let conversionCompletedd = false;
+      
+      for (let attempt = 1; attempt <= maxAttemptss; attempt++) {
+        console.log(`Controllo status (tentativo ${attempt})...`);
+        
+        const stateResponse = await axios.get(`${apiSubStatus}?id=${id}`);
+        
+        console.log('Response:', stateResponse.data); 
+        
+        const state= stateResponse.data.state;
+        
+        console.log(`Status attuale: ${state}`);
+        
+        if (state === 'ready') {
+          console.log('Conversione completata!');
+          conversionCompletedd = true;
+          break;
+        }
+        
+        if (state === 'fail') {
+          throw new Error(error || 'Conversione fallita');
+        }
+        
+        await new Promise(resolve => setTimeout(resolve, pollIntervall));
+      }
+
+      if (!conversionCompleted) {
+        throw new Error('Timeout: conversione non completata');
+      }
+
+      const subResponse = await axios.get(`${apiSubGet}?id=${id}`)
+      .then(response => {
+    const data = response.data;
+    
+    const blocchi = data.trim().split(/\r?\n\r?\n/);
+    
+    const subtitles = blocchi.map(blocco => {
+      const righe = blocco.split(/\r?\n/);
+      
+      if (righe.length >= 3) {
+        return {
+          timestamp: righe[1],           
+          testo: righe.slice(2).join(' ') 
+        };
+      }
+      return null;
+    }).filter(item => item !== null); 
+
+    console.log('Array con timestamp:', subtitles);
+    
+  });
 
 
     } catch (error) {
