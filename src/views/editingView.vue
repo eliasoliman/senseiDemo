@@ -5,8 +5,9 @@ import { AVWaveform } from 'vue-audio-visual'
 
 const videoUrl = ref('')
 const videoFile = ref(null)
+const subtitles = ref([])
 const videoPlayer = ref(null)
-const waveformComponent = ref(null) // Riferimento per pilotare i controlli interni
+const waveformComponent = ref(null) 
 const isPlaying = ref(false)
 const zoomLevel = ref(1)
 const timelineRef = ref(null)
@@ -15,12 +16,11 @@ const currentTime = ref(0)
 const videoDuration = ref(0)
 const pixelsPerSecond = ref(50)
 
-// Calcola la larghezza in base alla durata del video e lo zoom
+
 const calculatedWidth = computed(() => {
   if (videoDuration.value === 0) return 1200
   return Math.floor(videoDuration.value * pixelsPerSecond.value * zoomLevel.value)
 })
-
 provide('zoomLevel', zoomLevel)
 provide('calculatedWidth', calculatedWidth)
 
@@ -60,8 +60,9 @@ const setupVideoSync = () => {
 }
 
 onMounted(() => {
-  if (history.state && history.state.videoFile) {
+  if (history.state) {
     videoFile.value = history.state.videoFile
+    subtitles.value = history.state.subtitles
     videoUrl.value = URL.createObjectURL(videoFile.value)
   }
   
@@ -142,7 +143,9 @@ watch(videoPlayer, (newPlayer) => {
 
     <div class="container">
       <div class="content">
-        <div class="sidebar">Sidebar</div>
+        <div class="sidebar">
+          dsds
+        </div>
         <div class="video-area">
           <div class="video-box">
               <video 
@@ -313,6 +316,6 @@ h3 { color: rgba(18, 83, 163, 0.918); }
 }
 
 .waveform2 { width: 100%; height: 100%; display: block; }
-.video-commands { transform: translateY(-200px); }
+.video-commands { transform: translateY(-150px); }
 .zoomIcons { transform: translateX(10px); }
 </style>

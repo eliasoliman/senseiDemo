@@ -38,7 +38,6 @@ const videoLanguage = ref('');
 const targetLanguage = ref('');
 const router = useRouter()
 const videoFile = ref(null)
-const audioFile = ref(null)
 const projectName = ref('')
 const apiSubPost ='http://dh-server.fbk.eu:7380/create-subtitling-project'
 const apiConverionPost = 'http://dh-server.fbk.eu:7382/conversion-start'
@@ -64,6 +63,7 @@ async function createProject() {
     return;
   }
     try {
+      let loading = true;
       const formData = new FormData();
       formData.append('file', videoFile.value);
 
@@ -129,15 +129,14 @@ async function createProject() {
       formDataa.append('source', videoLanguage.value);
       formDataa.append('target', targetLanguage.value);
 
-      const response = await axios.post(apiSubPost, formDataa, {
+      const crSubResponse = await axios.post(apiSubPost, formDataa, {
         headers: {
           'Content-Type': 'multipart/form-data'
         }
       }); 
-      const id= response.data.id;
-      
+      const id = crSubResponse.data.data.id
 
-      const maxAttemptss = 10;
+      const maxAttemptss = 30;
       const pollIntervall = 1000;
       let conversionCompletedd = false;
       
@@ -148,8 +147,8 @@ async function createProject() {
         
         console.log('Response:', stateResponse.data); 
         
-        const state= stateResponse.data.state;
-        
+        const state= stateResponse.data.data.state;
+        console.log(state)
         console.log(`Status attuale: ${state}`);
         
         if (state === 'ready') {
@@ -186,9 +185,18 @@ async function createProject() {
       }
       return null;
     }).filter(item => item !== null); 
-
     console.log('Array con timestamp:', subtitles);
-    
+    loading = false;
+
+    if(loading == false){
+      router.push({
+          name: 'video-player',
+          state: { videoFile: videoFile.value,
+                  projectName: projectName.value,
+                  subtitles: subtitles.value
+          }
+        })
+    }
   });
 
 
