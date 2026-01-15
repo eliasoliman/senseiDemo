@@ -26,6 +26,11 @@
         <option value="fr">French</option>
       </select>
       <button class="btn btn-lg btn-light fw-bold" @click="createProject">Create</button>
+
+       <div v-if="loading" class="loading-overlay">
+          <div class="spinner"></div> 
+          <div> <h1>This operation may take a minute</h1></div>
+      </div>
   </div>
 </template>
 
@@ -37,6 +42,7 @@ import { useRouter } from 'vue-router'
 const videoLanguage = ref('');
 const targetLanguage = ref('');
 const router = useRouter()
+let loading = ref(false)
 const videoFile = ref(null)
 const projectName = ref('')
 const apiSubPost ='http://dh-server.fbk.eu:7380/create-subtitling-project'
@@ -63,7 +69,7 @@ async function createProject() {
     return;
   }
     try {
-      let loading = true;
+       loading.value = true;
       const formData = new FormData();
       formData.append('file', videoFile.value);
 
@@ -186,9 +192,9 @@ async function createProject() {
       return null;
     }).filter(item => item !== null); 
     console.log('Array con timestamp:', subtitles);
-    loading = false;
+     loading.value = false;
 
-    if(loading == false){
+    if(loading.value == false){
       router.push({
           name: 'video-player',
           state: { videoFile: videoFile.value,
@@ -205,7 +211,7 @@ async function createProject() {
       console.error('Risposta server:', error.response?.data);
       console.error('Status HTTP:', error.response?.status);
       console.error('URL chiamato:', error.config?.url);
-      
+      loading.value = false;
       alert(`Errore: ${error.message}`);
     }
   }
@@ -276,5 +282,31 @@ h1 {
 .form-select option {
   background-color: #2a2a2a;
   color: #e0e0e0;
+}
+
+.loading-overlay {
+  position: fixed;
+  inset: 0;
+  background-color: rgba(0, 0, 0, 0.659);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  z-index: 9999;
+}
+
+.spinner {
+  width: 64px;
+  height: 64px;
+  border: 4px solid white;
+  border-top-color: transparent;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 </style>
