@@ -62,7 +62,6 @@ const setupVideoSync = () => {
 onMounted(() => {
   if (history.state) {
     videoFile.value = history.state.videoFile
-    subtitles.value = history.state.subtitles
     videoUrl.value = URL.createObjectURL(videoFile.value)
   }
   
@@ -70,6 +69,17 @@ onMounted(() => {
     timelineRef.value = document.querySelector('.timeline')
     setupVideoSync()
   })
+})
+
+onMounted(() => {
+  console.log('1. onMounted eseguito')
+  const stored = localStorage.getItem('subtitles')
+  console.log('2. Cosa c\'è in localStorage:', stored)
+  
+  if (stored) {
+    subtitles.value = JSON.parse(stored)
+    console.log('Sottotitoli caricati:', subtitles.value.length)
+  }
 })
 
 onUnmounted(() => {
@@ -144,14 +154,17 @@ watch(videoPlayer, (newPlayer) => {
     <div class="container">
       <div class="content">
         <div class="sidebar">
-          <div 
-          v-for="(subtitle, index) in subtitles" 
-          :key="index"
-          class="subtitle-block"
-          >
-            {{ subtitle }}
-          </div>
-        </div>
+            <div class="subtitles-scroll">
+              <div 
+                v-for="(subtitle, index) in subtitles" 
+                :key="index"
+                class="subtitle-block"
+              >
+                <span class="timestamp">{{ subtitle.timestamp }}</span>
+                <p class="testo">{{ subtitle.testo }}</p>
+              </div>
+      </div>
+    </div>
         <div class="video-area">
           <div class="video-box">
               <video 
@@ -260,8 +273,10 @@ h3 { color: rgba(18, 83, 163, 0.918); }
 .container {
   grid-area: container;
   display: grid;
-  grid-template-rows: 50% 50%;
+  grid-template-rows: 65% 35%;
   min-width: 100%;
+  height: calc(100vh); /* AGGIUNGI QUESTA RIGA */
+  overflow: hidden;
 }
 
 .content {
@@ -270,14 +285,72 @@ h3 { color: rgba(18, 83, 163, 0.918); }
   width: 100%;
 }
 
+.sidebar { 
+  background-color: rgb(40, 40, 40);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  padding: 1rem;
+}
+
+.sidebar h2 {
+  margin: 0 0 1rem 0;
+  flex-shrink: 0;
+}
+
+.subtitles-scroll {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding-right: 0.5rem;
+  min-height: 0;
+}
+
 .subtitle-block {
   padding: 1rem;
-  margin: 0.5rem 0;
-  background: #f5f5f5;
+  margin-bottom: 0.8rem;
+  background: #2a2d31;
+  border-left: 4px solid rgba(18, 83, 163, 0.918);
   border-radius: 4px;
 }
 
-.sidebar { background-color: rgb(40, 40, 40); }
+.subtitle-block:last-child {
+  margin-bottom: 0;
+}
+
+.timestamp {
+  display: block;
+  font-weight: bold;
+  color: rgba(18, 83, 163, 0.918);
+  font-size: 0.85rem;
+  margin-bottom: 0.5rem;
+}
+
+.testo {
+  margin: 0;
+  color: #fff;
+  line-height: 1.4;
+  font-size: 0.9rem;
+}
+
+.subtitles-scroll::-webkit-scrollbar {
+  width: 6px;
+}
+
+.subtitles-scroll::-webkit-scrollbar-track {
+  background: #2a2d31;
+  border-radius: 3px;
+}
+
+.subtitles-scroll::-webkit-scrollbar-thumb {
+  background: rgba(18, 83, 163, 0.918);
+  border-radius: 3px;
+}
+
+.subtitles-scroll::-webkit-scrollbar-thumb:hover {
+  background: rgba(18, 83, 163, 1);
+}
+
 .video-area {
   background-color: rgb(108, 98, 83);
   display: grid;
@@ -296,6 +369,7 @@ h3 { color: rgba(18, 83, 163, 0.918); }
   overflow-x: auto;
   overflow-y: hidden;
   z-index: 1;
+  transform: translateY(30px);
 }
 
 .timeline >*{
@@ -304,9 +378,12 @@ h3 { color: rgba(18, 83, 163, 0.918); }
   grid-template-columns: 10% 90%;
   grid-template-areas: "name" "tracks";
   min-width: 100%;
+  transform: translateY(13px);
 }
 
-.time { transform: translateX(-5px); }
+.time { 
+  transform: translateX(-5px); 
+}
 .name {
   grid-area: name;
   text-align: center;

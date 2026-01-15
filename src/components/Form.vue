@@ -196,16 +196,21 @@ async function createProject() {
     }).filter(item => item !== null); 
     console.log('Array con timestamp:', subtitles);
      loading.value = false;
+      console.log('1. Subtitles prima di salvare:', subtitles.length)
 
-    if(loading.value == false){
-      router.push({
-          name: 'video-player',
-          state: { videoFile: videoFile.value,
-                  projectName: projectName.value,
-                  subtitles: subtitles.value
-          }
-        })
-    }
+      localStorage.setItem('subtitles', JSON.stringify(subtitles))
+
+      console.log('2. Salvato! Verifico subito:', localStorage.getItem('subtitles'))
+
+      if(loading.value == false){
+        router.push({
+            name: 'video-player',
+            state: { videoFile: videoFile.value,
+                    projectName: projectName.value,
+                    subtitles: subtitles
+            }
+          })
+      }
   });
 
 
