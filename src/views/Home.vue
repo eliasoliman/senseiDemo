@@ -26,7 +26,7 @@
       <Form class="form"/>
     </main>  
        
-    </div>
+  </div>
     
 </template>
 
@@ -39,7 +39,7 @@ import Form from '../components/Form.vue'
   background-color: #1A1A1A;
 }
 .cover-wrapper {
-  height: 100vh;
+  min-height: 100vh;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -68,9 +68,7 @@ h1{
   background: rgba(255, 255, 255, 0.2) !important;
   box-shadow: 0 8px 25px rgba(255, 255, 255, 0.4);
 }
-.form{
-  transform: translateY(80px);
-}
+
 
 @media (max-width: 768px) {
 .cover-wrapper {
@@ -79,7 +77,6 @@ h1{
 
 .main-content {
   max-width: 40rem;
-  transform: translateY(80px);
 }
 
 .signup{

@@ -8,6 +8,9 @@
   </div>
 </template>
 
-<style scoped>
-
+<style>
+body {
+  margin: 0px !important;
+  background-color: #212529 !important;
+}
 </style>

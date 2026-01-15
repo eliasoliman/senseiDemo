@@ -144,7 +144,13 @@ watch(videoPlayer, (newPlayer) => {
     <div class="container">
       <div class="content">
         <div class="sidebar">
-          dsds
+          <div 
+          v-for="(subtitle, index) in subtitles" 
+          :key="index"
+          class="subtitle-block"
+          >
+            {{ subtitle }}
+          </div>
         </div>
         <div class="video-area">
           <div class="video-box">
@@ -254,7 +260,7 @@ h3 { color: rgba(18, 83, 163, 0.918); }
 .container {
   grid-area: container;
   display: grid;
-  grid-template-rows: 60% 40%;
+  grid-template-rows: 50% 50%;
   min-width: 100%;
 }
 
@@ -264,7 +270,14 @@ h3 { color: rgba(18, 83, 163, 0.918); }
   width: 100%;
 }
 
-.sidebar { background-color: red; }
+.subtitle-block {
+  padding: 1rem;
+  margin: 0.5rem 0;
+  background: #f5f5f5;
+  border-radius: 4px;
+}
+
+.sidebar { background-color: rgb(40, 40, 40); }
 .video-area {
   background-color: rgb(108, 98, 83);
   display: grid;

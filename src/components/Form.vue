@@ -1,6 +1,7 @@
 <template>
   <div class="project-form-container">
-      <h1>Create your project now!</h1>
+    <div class="main-form">
+        <h1>Create your project now!</h1>
       <p>Project name</p>
       <div class="form-floating mb-3">
         <input type="text" class="form-control" placeholder="My project" v-model="projectName">
@@ -27,7 +28,9 @@
       </select>
       <button class="btn btn-lg btn-light fw-bold" @click="createProject">Create</button>
 
-       <div v-if="loading" class="loading-overlay">
+       
+    </div>
+      <div v-if="loading" class="loading-overlay">
           <div class="spinner"></div> 
           <div> <h1>This operation may take a minute</h1></div>
       </div>
@@ -250,8 +253,13 @@ h1 {
   border-radius: 8px;
   border: 1px solid #3a3a3a;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
-  width: 1025px;
-  height: 612px;
+  display: flex;
+  flex-direction: column;
+}
+
+.main-form{
+  padding: 2rem;
+  border-radius: 8px;
   display: flex;
   flex-direction: column;
 }
