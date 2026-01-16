@@ -250,6 +250,7 @@ watch(videoPlayer, (newPlayer) => {
   display: grid;
   grid-template-rows: 70px 1fr;
   grid-template-areas: "header" "container";
+  overflow: hidden;
 }
 
 .header {
@@ -275,14 +276,19 @@ h3 { color: rgba(18, 83, 163, 0.918); }
   display: grid;
   grid-template-rows: 65% 35%;
   min-width: 100%;
-  height: calc(100vh); /* AGGIUNGI QUESTA RIGA */
+  height: calc(100vh); 
   overflow: hidden;
+  gap: 0;
 }
 
 .content {
   display: grid;
   grid-template-columns: 40% 60%;
   width: 100%;
+  overflow: hidden;
+  height: 100%;
+  align-items: stretch;
+  max-height: 100%
 }
 
 .sidebar { 
@@ -290,7 +296,8 @@ h3 { color: rgba(18, 83, 163, 0.918); }
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  padding: 1rem;
+  padding-bottom: 30vh;
+  height: 100%;
 }
 
 .sidebar h2 {
@@ -312,10 +319,6 @@ h3 { color: rgba(18, 83, 163, 0.918); }
   background: #2a2d31;
   border-left: 4px solid rgba(18, 83, 163, 0.918);
   border-radius: 4px;
-}
-
-.subtitle-block:last-child {
-  margin-bottom: 0;
 }
 
 .timestamp {
@@ -352,12 +355,13 @@ h3 { color: rgba(18, 83, 163, 0.918); }
 }
 
 .video-area {
-  background-color: rgb(108, 98, 83);
+  background-color: rgb(33, 32, 32);
   display: grid;
   place-items: center;
+  padding-bottom: 30vh;
 }
 
-.video-box { width: 77%; }
+.video-box { width: 90%; }
 .video-box video { width: 100%; height: auto; display: block; object-fit: contain; }
 
 .timeline {
@@ -406,6 +410,5 @@ h3 { color: rgba(18, 83, 163, 0.918); }
 }
 
 .waveform2 { width: 100%; height: 100%; display: block; }
-.video-commands { transform: translateY(-150px); }
 .zoomIcons { transform: translateX(10px); }
 </style>
