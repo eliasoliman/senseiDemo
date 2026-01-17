@@ -15,10 +15,8 @@ const timelineWrapper = ref(null)
 const currentTime = ref(0)
 const isPlaying = ref(false)
 
-// --- LOGICA DI PARSING PER FORMATO "00:01:16,900 --> 00:01:18,900" ---
 const parseSrtTimestamp = (timestampStr) => {
   if (!timestampStr) return 0
-  // Prende la parte d'inizio prima della freccia, cambia la virgola in punto
   const startTime = timestampStr.split('-->')[0].trim().replace(',', '.')
   const parts = startTime.split(':').map(Number)
   
@@ -51,43 +49,44 @@ const processedSubtitles = computed(() => {
   })
 })
 
-// --- AUTO-SCROLL (Tua logica originale ripristinata) ---
-const handleAutoScroll = () => {
-  if (!timelineWrapper.value || !isPlaying.value) return
-  
-  const container = timelineWrapper.value
-  const cursorX = currentTime.value * props.pixelsPerSecond
-  const containerWidth = container.clientWidth
-  const targetScroll = cursorX - containerWidth / 2
-  const margin = 50
-  
-  if (cursorX < container.scrollLeft + margin || cursorX > container.scrollLeft + containerWidth - margin) {
-    container.scrollTo({
-      left: Math.max(0, targetScroll),
-      behavior: 'smooth'
-    })
-  }
+// Funzione per verificare se un sottotitolo è attivo
+const isSubtitleActive = (sub) => {
+  const time = currentTime.value
+  return time >= sub.start && time <= (sub.start + sub.duration)
 }
 
 const updateProgress = () => {
   if (!props.videoRef) return
   currentTime.value = props.videoRef.currentTime
   isPlaying.value = !props.videoRef.paused
-  handleAutoScroll()
 }
+
+watch(currentTime, (newVal) => {
+  if (!timelineWrapper.value || !isPlaying.value) return
+  
+  const container = timelineWrapper.value
+  const playheadPosition = newVal * props.pixelsPerSecond
+  
+  const offset = 200
+  const targetScroll = Math.max(0, playheadPosition - offset)
+  
+  container.scrollTo({
+    left: targetScroll,
+    behavior: 'smooth'
+  })
+})
 
 watch(() => props.pixelsPerSecond, () => {
   if (timelineWrapper.value && props.videoRef) {
-    const cursorX = currentTime.value * props.pixelsPerSecond
-    const targetScroll = cursorX - timelineWrapper.value.clientWidth / 2
+    const playheadPosition = currentTime.value * props.pixelsPerSecond
+    const offset = 200
     timelineWrapper.value.scrollTo({
-      left: Math.max(0, targetScroll),
+      left: Math.max(0, playheadPosition - offset),
       behavior: 'smooth'
     })
   }
 })
 
-// --- LOGICA DEL RIGHELLO (Ripristinata) ---
 const dynamicStep = computed(() => {
   if (props.pixelsPerSecond < 30) return 30
   if (props.pixelsPerSecond < 60) return 10
@@ -163,12 +162,12 @@ onUnmounted(() => {
         v-for="sub in processedSubtitles" 
         :key="sub.id"
         class="sub-block"
+        :class="{ 'sub-block-active': isSubtitleActive(sub) }"
         :style="{ 
           position: 'absolute',
           left: '0px',
           top: '15px',
           width: (sub.duration * pixelsPerSecond) + 'px',
-          /* SPOSTAMENTO X: Secondi * Pixel/Secondo */
           transform: `translateX(${sub.start * pixelsPerSecond}px)` 
         }"
         :title="sub.originalTimestamp"
@@ -188,6 +187,7 @@ onUnmounted(() => {
   position: relative;
   scrollbar-width: thin;
   scrollbar-color: #444 #111;
+  scroll-behavior: smooth;
 }
 
 .ruler {
@@ -259,6 +259,14 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   box-sizing: border-box;
+  transition: all 0.2s ease;
+}
+
+.sub-block-active {
+  border-color: #ffd700;
+  box-shadow: 0 0 10px rgba(137, 41, 234, 0.6);
+  transform: translateX(var(--translate-x)) scale(1.05);
+  z-index: 10;
 }
 
 .sub-block-text {
