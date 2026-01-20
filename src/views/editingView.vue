@@ -14,6 +14,14 @@ const videoDuration = ref(0)
 const pixelsPerSecond = ref(80)
 const subtitlesScroll = ref(null)
 
+// Modal state
+const showModal = ref(false)
+const editingIndex = ref(-1)
+const editForm = ref({
+  timestamp: '',
+  testo: ''
+})
+
 const calculatedWidth = computed(() => {
   if (videoDuration.value === 0) return 1200
   return Math.floor(videoDuration.value * pixelsPerSecond.value * zoomLevel.value)
@@ -22,7 +30,6 @@ const calculatedWidth = computed(() => {
 provide('zoomLevel', zoomLevel)
 provide('calculatedWidth', calculatedWidth)
 
-// Funzione per parsare il timestamp dei sottotitoli
 const parseSrtTimestamp = (timestampStr) => {
   if (!timestampStr) return 0
   const startTime = timestampStr.split('-->')[0].trim().replace(',', '.')
@@ -34,7 +41,6 @@ const parseSrtTimestamp = (timestampStr) => {
   return 0
 }
 
-// Trova l'indice del sottotitolo attivo
 const getActiveSubtitleIndex = () => {
   if (!subtitles.value || subtitles.value.length === 0) return -1
   
@@ -42,8 +48,7 @@ const getActiveSubtitleIndex = () => {
     const sub = subtitles.value[i]
     const start = parseSrtTimestamp(sub.timestamp)
     
-    // Calcola la durata (se c'è un end time)
-    let duration = 2 // default
+    let duration = 2 
     if (sub.timestamp.includes('-->')) {
       const parts = sub.timestamp.split('-->')
       const end = parseSrtTimestamp(parts[1].trim())
@@ -57,21 +62,17 @@ const getActiveSubtitleIndex = () => {
   return -1
 }
 
-// Ottieni il testo del sottotitolo attivo
 const activeSubtitleText = computed(() => {
   const activeIndex = getActiveSubtitleIndex()
   if (activeIndex < 0) return ''
   return subtitles.value[activeIndex]?.testo || ''
 })
 
-// Autoscroll della sidebar
 const scrollSidebarToActive = () => {
   if (!subtitlesScroll.value || !isPlaying.value) return
   
   const activeIndex = getActiveSubtitleIndex()
   if (activeIndex < 0) return
-  
-  // Inizia a centrare dopo il terzo elemento
   if (activeIndex < 3) return
   
   const container = subtitlesScroll.value
@@ -82,8 +83,6 @@ const scrollSidebarToActive = () => {
     const containerHeight = container.clientHeight
     const blockTop = block.offsetTop
     const blockHeight = block.clientHeight
-    
-    // Calcola lo scroll per centrare il blocco
     const targetScroll = blockTop - (containerHeight / 2) + (blockHeight / 2)
     
     container.scrollTo({
@@ -93,7 +92,6 @@ const scrollSidebarToActive = () => {
   }
 }
 
-// Verifica se un sottotitolo è attivo (per evidenziarlo)
 const isSubtitleActive = (index) => {
   return getActiveSubtitleIndex() === index
 }
@@ -103,8 +101,7 @@ const setupVideoSync = () => {
     videoPlayer.value.onloadedmetadata = () => {
       videoDuration.value = videoPlayer.value.duration
     }
-    
-    // Aggiorna currentTime e isPlaying
+
     videoPlayer.value.ontimeupdate = () => {
       currentTime.value = videoPlayer.value.currentTime
     }
@@ -119,7 +116,44 @@ const setupVideoSync = () => {
   }
 }
 
-// Watch per autoscroll sidebar
+const openEditModal = (index) => {
+  editingIndex.value = index
+  editForm.value = {
+    timestamp: subtitles.value[index].timestamp,
+    testo: subtitles.value[index].testo
+  }
+  showModal.value = true
+  
+  if (videoPlayer.value && !videoPlayer.value.paused) {
+    videoPlayer.value.pause()
+  }
+}
+
+const closeModal = () => {
+  showModal.value = false
+  editingIndex.value = -1
+  editForm.value = { timestamp: '', testo: '' }
+}
+
+const saveEdit = () => {
+  if (editingIndex.value >= 0) {
+    subtitles.value[editingIndex.value] = {
+      timestamp: editForm.value.timestamp,
+      testo: editForm.value.testo
+    }
+    
+    subtitles.value.sort((a, b) => {
+      const timeA = parseSrtTimestamp(a.timestamp)
+      const timeB = parseSrtTimestamp(b.timestamp)
+      return timeA - timeB
+    })
+    
+    localStorage.setItem('subtitles', JSON.stringify(subtitles.value))
+    
+    closeModal()
+  }
+}
+
 watch(currentTime, () => {
   scrollSidebarToActive()
 })
@@ -200,6 +234,7 @@ watch(videoPlayer, (newPlayer) => {
               >
                 <span class="timestamp">{{ subtitle.timestamp }}</span>
                 <p class="testo">{{ subtitle.testo }}</p>
+                <button class="btn-edit" @click="openEditModal(index)">Edit</button>
               </div>
             </div>
         </div>
@@ -207,8 +242,6 @@ watch(videoPlayer, (newPlayer) => {
         <div class="video-area">
           <div class="video-box">
               <video ref="videoPlayer" v-if="videoUrl" :src="videoUrl" controls></video>
-              
-              <!-- Overlay sottotitolo sul video -->
               <div v-if="activeSubtitleText" class="subtitle-overlay">
                 <span class="subtitle-text">{{ activeSubtitleText }}</span>
               </div>
@@ -245,6 +278,41 @@ watch(videoPlayer, (newPlayer) => {
 
       </div>
     </div>
+
+    <div v-if="showModal" class="modal-overlay" @click.self="closeModal">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h4>Edit Subtitle</h4>
+          <button class="btn-close" @click="closeModal">&times;</button>
+        </div>
+        <div class="modal-body">
+          <div class="form-group">
+            <label for="timestamp">Timestamp</label>
+            <input 
+              id="timestamp"
+              v-model="editForm.timestamp" 
+              type="text" 
+              class="form-control"
+              placeholder="00:00:01,000 --> 00:00:03,000"
+            />
+          </div>
+          <div class="form-group">
+            <label for="testo">Text</label>
+            <textarea 
+              id="testo"
+              v-model="editForm.testo" 
+              class="form-control"
+              rows="4"
+              placeholder="Inserisci il testo del sottotitolo"
+            ></textarea>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-secondary" @click="closeModal">Cancel</button>
+          <button class="btn btn-primary" @click="saveEdit">Save</button>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -256,14 +324,14 @@ watch(videoPlayer, (newPlayer) => {
   color: #fff; 
   text-shadow: 0 0.05rem 0.1rem rgba(0, 0, 0, 0.5); 
   display: grid; 
-  grid-template-rows: 70px 1fr; 
+  grid-template-rows: 55px 1fr; 
   grid-template-areas: "header" "container"; 
   overflow: hidden; 
 }
 .header { 
   grid-area: header; 
   background-color: #212529; 
-  height: 60px; 
+  height: 50px; 
 }
 h3 { 
   color: rgba(18, 83, 163, 0.918); 
@@ -319,6 +387,7 @@ h3 {
   border-left: 4px solid rgba(18, 83, 163, 0.918); 
   border-radius: 4px;
   transition: all 0.3s ease;
+  position: relative;
 }
 
 .subtitle-block-active {
@@ -344,7 +413,10 @@ h3 {
   color: #fff; 
   line-height: 1.4; 
   font-size: 0.9rem; 
+  margin-bottom: 0.5rem;
 }
+
+
 .video-area { 
   background-color: rgb(33, 32, 32); 
   display: grid; 
@@ -361,8 +433,6 @@ h3 {
   display: block; 
   object-fit: contain; 
 }
-
-/* Overlay sottotitolo sul video */
 .subtitle-overlay {
   position: absolute;
   bottom: 35px;
@@ -386,19 +456,8 @@ h3 {
   backdrop-filter: blur(4px);
 }
 
-.video-area { 
-  background-color: rgb(33, 32, 32); 
-  display: grid; 
-  place-items: center; 
-  padding-bottom: 30vh; 
-}
-
 .timeline { 
   background-color: #171819; 
-  display: grid; 
-  grid-template-rows: 16% 28% 28% 28%; 
-  grid-template-areas: "time" "waveform" "traccia1" "traccia2"; 
-  gap: 0px; 
   overflow-x: auto; 
   overflow-y: hidden; 
   z-index: 1; 
@@ -406,5 +465,166 @@ h3 {
 }
 .zoomIcons { 
   cursor: pointer; 
+}
+
+.btn-edit {
+  position: absolute;
+  bottom: 8px;
+  right: 8px;
+  background: rgba(18, 83, 163, 0.918);
+  color: #fff;
+  border: none;
+  padding: 4px 12px;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.btn-edit:hover {
+  background: rgba(18, 83, 163, 1);
+  transform: translateY(-1px);
+}
+
+.subtitle-block-active .btn-edit {
+  background: rgba(137, 41, 234, 0.8);
+}
+
+.subtitle-block-active .btn-edit:hover {
+background: rgba(137, 41, 234, 1);
+}
+
+/* Modal styles */
+.modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(0, 0, 0, 0.8);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  backdrop-filter: blur(4px);
+}
+
+.modal-content {
+  background: #2a2d31;
+  border-radius: 8px;
+  width: 90%;
+  max-width: 600px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+}
+
+.modal-header {
+  padding: 1.5rem;
+  border-bottom: 1px solid #3a3d41;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.modal-header h4 {
+  margin: 0;
+  color: rgba(18, 83, 163, 0.918);
+}
+
+.btn-close {
+  background: none;
+  border: none;
+  color: #fff;
+  font-size: 2rem;
+  cursor: pointer;
+  line-height: 1;
+  padding: 0;
+  width: 30px;
+  height: 30px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s ease;
+}
+
+.btn-close:hover {
+  color: rgba(18, 83, 163, 0.918);
+  transform: rotate(90deg);
+}
+
+.modal-body {
+  padding: 1.5rem;
+}
+
+.form-group {
+  margin-bottom: 1.5rem;
+}
+
+.form-group label {
+  display: block;
+  margin-bottom: 0.5rem;
+  color: rgba(18, 83, 163, 0.918);
+  font-weight: bold;
+  font-size: 0.9rem;
+}
+
+.form-control {
+  width: 100%;
+  padding: 0.75rem;
+  background: #1a1d21;
+  border: 1px solid #3a3d41;
+  border-radius: 4px;
+  color: #fff;
+  font-size: 0.9rem;
+  font-family: inherit;
+  transition: all 0.2s ease;
+}
+
+.form-control:focus {
+  outline: none;
+  border-color: rgba(18, 83, 163, 0.918);
+  box-shadow: 0 0 0 3px rgba(18, 83, 163, 0.2);
+}
+
+textarea.form-control {
+  resize: vertical;
+  min-height: 100px;
+}
+
+.modal-footer {
+  padding: 1.5rem;
+  border-top: 1px solid #3a3d41;
+  display: flex;
+  justify-content: flex-end;
+  gap: 1rem;
+}
+
+.btn {
+  padding: 0.5rem 1.5rem;
+  border: none;
+  border-radius: 4px;
+  font-size: 0.9rem;
+  font-weight: bold;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.btn-secondary {
+  background: #3a3d41;
+  color: #fff;
+}
+
+.btn-secondary:hover {
+  background: #4a4d51;
+}
+
+.btn-primary {
+  background: rgba(18, 83, 163, 0.918);
+  color: #fff;
+}
+
+.btn-primary:hover {
+  background: rgba(18, 83, 163, 1);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 8px rgba(18, 83, 163, 0.3);
 }
 </style>

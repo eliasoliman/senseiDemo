@@ -1,5 +1,6 @@
 <script setup>
-import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
+import { ref, computed, onMounted, onUnmounted, watch, nextTick } from 'vue'
+import { AVWaveform } from 'vue-audio-visual'
 
 const props = defineProps({
   duration: Number,
@@ -9,11 +10,26 @@ const props = defineProps({
     type: Number,
     default: 80
   }
+  // audioSrc rimossa - useremo il src del video
 })
 
 const timelineWrapper = ref(null)
+const waveformContainer = ref(null)
 const currentTime = ref(0)
 const isPlaying = ref(false)
+const videoSrc = ref('')
+
+// Estrai il src del video
+const getVideoSrc = () => {
+  if (!props.videoRef) return ''
+  const videoElement = props.videoRef.value || props.videoRef
+  return videoElement.src || videoElement.currentSrc || ''
+}
+
+// Watch per aggiornare il src quando cambia
+watch(() => props.videoRef, () => {
+  videoSrc.value = getVideoSrc()
+}, { immediate: true, deep: true })
 
 const parseSrtTimestamp = (timestampStr) => {
   if (!timestampStr) return 0
@@ -49,7 +65,6 @@ const processedSubtitles = computed(() => {
   })
 })
 
-// Funzione per verificare se un sottotitolo è attivo
 const isSubtitleActive = (sub) => {
   const time = currentTime.value
   return time >= sub.start && time <= (sub.start + sub.duration)
@@ -57,8 +72,9 @@ const isSubtitleActive = (sub) => {
 
 const updateProgress = () => {
   if (!props.videoRef) return
-  currentTime.value = props.videoRef.currentTime
-  isPlaying.value = !props.videoRef.paused
+  const videoElement = props.videoRef.value || props.videoRef
+  currentTime.value = videoElement.currentTime
+  isPlaying.value = !videoElement.paused
 }
 
 watch(currentTime, (newVal) => {
@@ -109,76 +125,137 @@ const formatTime = (seconds) => {
 
 const handleRulerDblClick = (event) => {
   if (!props.videoRef) return
+  const videoElement = props.videoRef.value || props.videoRef
   const rect = event.currentTarget.getBoundingClientRect()
   const clickX = event.clientX - rect.left + timelineWrapper.value.scrollLeft
   const newTime = clickX / props.pixelsPerSecond
-  props.videoRef.currentTime = Math.min(newTime, props.duration)
+  videoElement.currentTime = Math.min(newTime, props.duration)
 }
+
+// Calcola la larghezza del waveform in base alla durata e al pixel per secondo
+const waveformWidth = computed(() => {
+  return (props.duration || 0) * props.pixelsPerSecond
+})
 
 onMounted(() => {
   if (props.videoRef) {
-    props.videoRef.addEventListener('timeupdate', updateProgress)
-    props.videoRef.addEventListener('play', updateProgress)
-    props.videoRef.addEventListener('pause', updateProgress)
+    const videoElement = props.videoRef.value || props.videoRef
+    
+    videoElement.addEventListener('timeupdate', updateProgress)
+    videoElement.addEventListener('play', updateProgress)
+    videoElement.addEventListener('pause', updateProgress)
+    videoElement.addEventListener('loadedmetadata', () => {
+      videoSrc.value = getVideoSrc()
+    })
+    
+    // Imposta subito il src se disponibile
+    videoSrc.value = getVideoSrc()
   }
 })
 
 onUnmounted(() => {
   if (props.videoRef) {
-    props.videoRef.removeEventListener('timeupdate', updateProgress)
-    props.videoRef.removeEventListener('play', updateProgress)
-    props.videoRef.removeEventListener('pause', updateProgress)
+    const videoElement = props.videoRef.value || props.videoRef
+    
+    videoElement.removeEventListener('timeupdate', updateProgress)
+    videoElement.removeEventListener('play', updateProgress)
+    videoElement.removeEventListener('pause', updateProgress)
   }
 })
 </script>
 
 <template>
-  <div class="timeline-wrapper" ref="timelineWrapper">
-    <div 
-      class="ruler" 
-      :style="{ width: (duration * pixelsPerSecond) + 'px' }"
-      @dblclick="handleRulerDblClick"
-    >
-      <div 
-        v-for="time in timeMarkers" 
-        :key="time" 
-        class="marker-group"
-        :style="{ left: (time * pixelsPerSecond) + 'px' }"
-      >
-        <span class="time-label">{{ formatTime(time) }}</span>
-        <div class="tick-major"></div>
-      </div>
+  <div class="container">
+    <div class="left">
+      <div class="waveform">Waveform</div>
+      <div class="track">Track 1</div>
+      <div class="track">Track 2</div>
     </div>
 
-    <div class="track-area" :style="{ width: (duration * pixelsPerSecond) + 'px' }">
+    <div class="timeline-wrapper" ref="timelineWrapper">
       <div 
-        class="playhead" 
-        :style="{ transform: `translateX(${currentTime * pixelsPerSecond}px)` }"
+        class="ruler" 
+        :style="{ width: (duration * pixelsPerSecond) + 'px' }"
+        @dblclick="handleRulerDblClick"
       >
-        <div class="playhead-line"></div>
+        <div 
+          v-for="time in timeMarkers" 
+          :key="time" 
+          class="marker-group"
+          :style="{ left: (time * pixelsPerSecond) + 'px' }"
+        >
+          <span class="time-label">{{ formatTime(time) }}</span>
+          <div class="tick-major"></div>
+        </div>
       </div>
 
-      <div 
-        v-for="sub in processedSubtitles" 
-        :key="sub.id"
-        class="sub-block"
-        :class="{ 'sub-block-active': isSubtitleActive(sub) }"
-        :style="{ 
-          position: 'absolute',
-          left: '0px',
-          top: '15px',
-          width: (sub.duration * pixelsPerSecond) + 'px',
-          transform: `translateX(${sub.start * pixelsPerSecond}px)` 
-        }"
-        :title="sub.originalTimestamp"
-      >
-        <span class="sub-block-text">{{ sub.text }}</span>
+      <div class="track-area" :style="{ width: (duration * pixelsPerSecond) + 'px' }">
+        <div 
+          class="playhead" 
+          :style="{ transform: `translateX(${currentTime * pixelsPerSecond}px)` }"
+        >
+          <div class="playhead-line"></div>
+        </div>
+
+        <div 
+          ref="waveformContainer" 
+          class="waveform-track"
+          :style="{ width: waveformWidth + 'px' }"
+        >
+          <AVWaveform
+            v-if="videoSrc"
+            :key="videoSrc" 
+            :src="videoSrc"
+            :canv-width="waveformWidth"
+            :playtime="false"
+            :playtime-line-width="0"
+            :canv-height="60"
+            :line-width="3"
+            :line-space="2"
+            :line-color="'#60a5fa'"
+            :audio-controls="false"
+            :noplayed-line-width="0"
+          />
+          <div v-else class="waveform-placeholder">
+            Caricamento video...
+          </div>
+        </div>
+
+        <div 
+          v-for="sub in processedSubtitles" 
+          :key="sub.id"
+          class="sub-block"
+          :class="{ 'sub-block-active': isSubtitleActive(sub) }"
+          :style="{ 
+            position: 'absolute',
+            left: '0px',
+            top: '70px',
+            width: (sub.duration * pixelsPerSecond) + 'px',
+            transform: `translateX(${sub.start * pixelsPerSecond}px)` 
+          }"
+          :title="sub.originalTimestamp"
+        >
+          <span class="sub-block-text">{{ sub.text }}</span>
+        </div>
       </div>
     </div>
   </div>
 </template>
 
 <style scoped>
+.container {
+  display: grid;
+  grid-template-columns: 10% 90%;
+  width: 100%;
+  height: 100%;
+}
+
+.left {
+  padding-top: 30px;
+  display: grid;
+  grid-template-rows: 1fr 1fr 1fr;
+}
+
 .timeline-wrapper {
   width: 100%;
   overflow-x: auto;
@@ -227,6 +304,40 @@ onUnmounted(() => {
   background: #141414;
   background-image: linear-gradient(to right, #222 1px, transparent 1px);
   background-size: v-bind('pixelsPerSecond + "px"') 100%;
+}
+
+.waveform-track {
+  position: absolute;
+  top: 0;
+  left: 0;
+  height: 60px;
+  background: #1a1a1a;
+  border-bottom: 1px solid #333;
+  pointer-events: none;
+  user-select: none;
+  overflow: hidden;
+}
+
+.waveform-placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  color: #666;
+  font-size: 12px;
+}
+
+/* Assicura che il canvas del waveform sia visibile */
+.waveform-track :deep(canvas) {
+  display: block !important;
+  width: 100% !important;
+  height: 60px !important;
+  background: transparent !important;
+}
+
+/* Nasconde eventuali controlli audio di AVWaveform */
+.waveform-track :deep(audio) {
+  display: none !important;
 }
 
 .playhead {
