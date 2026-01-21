@@ -18,6 +18,8 @@ const waveformContainer = ref(null)
 const currentTime = ref(0)
 const isPlaying = ref(false)
 const videoSrc = ref('')
+const waveformKey = ref(0)
+const isDragging = ref(false)
 
 // Estrai il src del video
 const getVideoSrc = () => {
@@ -30,6 +32,11 @@ const getVideoSrc = () => {
 watch(() => props.videoRef, () => {
   videoSrc.value = getVideoSrc()
 }, { immediate: true, deep: true })
+
+// Rigenera la waveform quando cambia lo zoom
+watch(() => props.pixelsPerSecond, () => {
+  waveformKey.value++
+})
 
 const parseSrtTimestamp = (timestampStr) => {
   if (!timestampStr) return 0
@@ -123,13 +130,30 @@ const formatTime = (seconds) => {
   return `${m}:${s.toString().padStart(2, '0')}`
 }
 
-const handleRulerDblClick = (event) => {
-  if (!props.videoRef) return
+const handlePlayheadMouseDown = (event) => {
+  event.preventDefault()
+  isDragging.value = true
+  document.body.style.cursor = 'grabbing'
+  document.body.style.userSelect = 'none'
+}
+
+const handleMouseMove = (event) => {
+  if (!isDragging.value || !props.videoRef || !timelineWrapper.value) return
+  
   const videoElement = props.videoRef.value || props.videoRef
-  const rect = event.currentTarget.getBoundingClientRect()
+  const rect = timelineWrapper.value.getBoundingClientRect()
   const clickX = event.clientX - rect.left + timelineWrapper.value.scrollLeft
-  const newTime = clickX / props.pixelsPerSecond
-  videoElement.currentTime = Math.min(newTime, props.duration)
+  const newTime = Math.max(0, Math.min(clickX / props.pixelsPerSecond, props.duration))
+  
+  videoElement.currentTime = newTime
+}
+
+const handleMouseUp = () => {
+  if (isDragging.value) {
+    isDragging.value = false
+    document.body.style.cursor = ''
+    document.body.style.userSelect = ''
+  }
 }
 
 // Calcola la larghezza del waveform in base alla durata e al pixel per secondo
@@ -151,6 +175,10 @@ onMounted(() => {
     // Imposta subito il src se disponibile
     videoSrc.value = getVideoSrc()
   }
+  
+  // Event listeners per il dragging del playhead
+  document.addEventListener('mousemove', handleMouseMove)
+  document.addEventListener('mouseup', handleMouseUp)
 })
 
 onUnmounted(() => {
@@ -161,6 +189,10 @@ onUnmounted(() => {
     videoElement.removeEventListener('play', updateProgress)
     videoElement.removeEventListener('pause', updateProgress)
   }
+  
+  // Rimuovi event listeners del dragging
+  document.removeEventListener('mousemove', handleMouseMove)
+  document.removeEventListener('mouseup', handleMouseUp)
 })
 </script>
 
@@ -176,7 +208,6 @@ onUnmounted(() => {
       <div 
         class="ruler" 
         :style="{ width: (duration * pixelsPerSecond) + 'px' }"
-        @dblclick="handleRulerDblClick"
       >
         <div 
           v-for="time in timeMarkers" 
@@ -193,6 +224,7 @@ onUnmounted(() => {
         <div 
           class="playhead" 
           :style="{ transform: `translateX(${currentTime * pixelsPerSecond}px)` }"
+          @mousedown="handlePlayheadMouseDown"
         >
           <div class="playhead-line"></div>
         </div>
@@ -204,7 +236,7 @@ onUnmounted(() => {
         >
           <AVWaveform
             v-if="videoSrc"
-            :key="videoSrc" 
+            :key="`${videoSrc}-${waveformKey}`" 
             :src="videoSrc"
             :canv-width="waveformWidth"
             :playtime="false"
@@ -253,8 +285,11 @@ onUnmounted(() => {
 .left {
   padding-top: 30px;
   display: grid;
-  grid-template-rows: 1fr 1fr 1fr;
+  grid-template-rows: 60px 60px 60px;
+  align-items: center;
 }
+
+
 
 .timeline-wrapper {
   width: 100%;
@@ -271,7 +306,6 @@ onUnmounted(() => {
   height: 30px;
   position: relative;
   background: #1a1a1a;
-  cursor: crosshair;
   border-bottom: 1px solid #333;
 }
 
@@ -299,11 +333,13 @@ onUnmounted(() => {
 }
 
 .track-area {
-  height: 120px;
+  height: 180px;
   position: relative;
   background: #141414;
   background-image: linear-gradient(to right, #222 1px, transparent 1px);
   background-size: v-bind('pixelsPerSecond + "px"') 100%;
+  display: grid;
+  grid-template-rows: 60px 60px 60px;
 }
 
 .waveform-track {
@@ -327,7 +363,6 @@ onUnmounted(() => {
   font-size: 12px;
 }
 
-/* Assicura che il canvas del waveform sia visibile */
 .waveform-track :deep(canvas) {
   display: block !important;
   width: 100% !important;
@@ -335,7 +370,6 @@ onUnmounted(() => {
   background: transparent !important;
 }
 
-/* Nasconde eventuali controlli audio di AVWaveform */
 .waveform-track :deep(audio) {
   display: none !important;
 }
@@ -346,12 +380,17 @@ onUnmounted(() => {
   left: 0;
   height: 150px;
   z-index: 100;
-  pointer-events: none;
+  pointer-events: all;
+  cursor: grab;
+}
+
+.playhead:active {
+  cursor: grabbing;
 }
 
 .playhead-line {
   width: 2px;
-  height: 100%;
+  height: 180px;
   background: #ff4500;
   box-shadow: 0 0 5px rgba(255, 69, 0, 0.5);
 }
@@ -374,7 +413,7 @@ onUnmounted(() => {
 }
 
 .sub-block-active {
-  border-color: #ffd700;
+  border-color: #8025f7;
   box-shadow: 0 0 10px rgba(137, 41, 234, 0.6);
   transform: translateX(var(--translate-x)) scale(1.05);
   z-index: 10;
