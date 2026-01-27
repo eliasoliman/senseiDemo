@@ -10,30 +10,34 @@ const props = defineProps({
     type: Number,
     default: 80
   }
-  // audioSrc rimossa - useremo il src del video
 })
 
+const emit = defineEmits(['update:subtitles'])
+
 const timelineWrapper = ref(null)
-const waveformContainer = ref(null)
 const currentTime = ref(0)
 const isPlaying = ref(false)
 const videoSrc = ref('')
 const waveformKey = ref(0)
 const isDragging = ref(false)
+const draggingSubtitle = ref(null)
+const resizingSubtitle = ref(null)
+const resizeEdge = ref(null) 
+const dragStartX = ref(0)
+const dragStartTime = ref(0)
+const dragStartDuration = ref(0)
 
-// Estrai il src del video
+
 const getVideoSrc = () => {
   if (!props.videoRef) return ''
   const videoElement = props.videoRef.value || props.videoRef
   return videoElement.src || videoElement.currentSrc || ''
 }
 
-// Watch per aggiornare il src quando cambia
 watch(() => props.videoRef, () => {
   videoSrc.value = getVideoSrc()
 }, { immediate: true, deep: true })
 
-// Rigenera la waveform quando cambia lo zoom
 watch(() => props.pixelsPerSecond, () => {
   waveformKey.value++
 })
@@ -53,6 +57,36 @@ const parseSrtDuration = (timestampStr) => {
   if (!timestampStr.includes('-->')) return 2
   const parts = timestampStr.split('-->').map(t => parseSrtTimestamp(t.trim()))
   return Math.max(0.5, parts[1] - parts[0])
+}
+
+const formatTimestampToSrt = (startTime, duration) => {
+  const formatSrtTime = (seconds) => {
+    const hours = Math.floor(seconds / 3600)
+    const minutes = Math.floor((seconds % 3600) / 60)
+    const secs = Math.floor(seconds % 60)
+    const ms = Math.floor((seconds % 1) * 1000)
+    return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')},${ms.toString().padStart(3, '0')}`
+  }
+  
+  const endTime = startTime + duration
+  return `${formatSrtTime(startTime)} --> ${formatSrtTime(endTime)}`
+}
+
+const updateSubtitleTimestamp = (subId, newStart, newDuration) => {
+  const updatedSubs = [...props.subtitles]
+  const subToUpdate = updatedSubs[subId]
+  
+  if (subToUpdate) {
+    subToUpdate.timestamp = formatTimestampToSrt(newStart, newDuration)
+    
+    updatedSubs.sort((a, b) => {
+      const timeA = parseSrtTimestamp(a.timestamp)
+      const timeB = parseSrtTimestamp(b.timestamp)
+      return timeA - timeB
+    })
+    
+    emit('update:subtitles', updatedSubs)
+  }
 }
 
 const processedSubtitles = computed(() => {
@@ -130,6 +164,25 @@ const formatTime = (seconds) => {
   return `${m}:${s.toString().padStart(2, '0')}`
 }
 
+const handleSubtitleMouseDown = (event, sub, edge = null) => {
+  event.preventDefault()
+  event.stopPropagation()
+  
+  if (edge) {
+    resizingSubtitle.value = sub
+    resizeEdge.value = edge
+    dragStartDuration.value = sub.duration
+  } else {
+    draggingSubtitle.value = sub
+  }
+  
+  dragStartX.value = event.clientX
+  dragStartTime.value = sub.start
+  
+  document.body.style.cursor = edge ? 'ew-resize' : 'grabbing'
+  document.body.style.userSelect = 'none'
+}
+
 const handlePlayheadMouseDown = (event) => {
   event.preventDefault()
   isDragging.value = true
@@ -138,25 +191,53 @@ const handlePlayheadMouseDown = (event) => {
 }
 
 const handleMouseMove = (event) => {
-  if (!isDragging.value || !props.videoRef || !timelineWrapper.value) return
+  if (isDragging.value && !draggingSubtitle.value && !resizingSubtitle.value) {
+    if (!props.videoRef || !timelineWrapper.value) return
+    
+    const videoElement = props.videoRef.value || props.videoRef
+    const rect = timelineWrapper.value.getBoundingClientRect()
+    const clickX = event.clientX - rect.left + timelineWrapper.value.scrollLeft
+    const newTime = Math.max(0, Math.min(clickX / props.pixelsPerSecond, props.duration))
+    
+    videoElement.currentTime = newTime
+    return
+  }
+
+  if (draggingSubtitle.value) {
+    const deltaX = event.clientX - dragStartX.value
+    const deltaTime = deltaX / props.pixelsPerSecond
+    const newStart = Math.max(0, Math.min(dragStartTime.value + deltaTime, props.duration - draggingSubtitle.value.duration))
+    
+    updateSubtitleTimestamp(draggingSubtitle.value.id, newStart, draggingSubtitle.value.duration)
+    return
+  }
   
-  const videoElement = props.videoRef.value || props.videoRef
-  const rect = timelineWrapper.value.getBoundingClientRect()
-  const clickX = event.clientX - rect.left + timelineWrapper.value.scrollLeft
-  const newTime = Math.max(0, Math.min(clickX / props.pixelsPerSecond, props.duration))
-  
-  videoElement.currentTime = newTime
+  if (resizingSubtitle.value) {
+    const deltaX = event.clientX - dragStartX.value
+    const deltaTime = deltaX / props.pixelsPerSecond
+    
+    if (resizeEdge.value === 'left') {
+      const newStart = Math.max(0, Math.min(dragStartTime.value + deltaTime, dragStartTime.value + dragStartDuration.value - 0.5))
+      const newDuration = dragStartTime.value + dragStartDuration.value - newStart
+      updateSubtitleTimestamp(resizingSubtitle.value.id, newStart, newDuration)
+    } else if (resizeEdge.value === 'right') {
+      const newDuration = Math.max(0.5, dragStartDuration.value + deltaTime)
+      updateSubtitleTimestamp(resizingSubtitle.value.id, resizingSubtitle.value.start, newDuration)
+    }
+  }
 }
 
 const handleMouseUp = () => {
-  if (isDragging.value) {
+  if (isDragging.value || draggingSubtitle.value || resizingSubtitle.value) {
     isDragging.value = false
+    draggingSubtitle.value = null
+    resizingSubtitle.value = null
+    resizeEdge.value = null
     document.body.style.cursor = ''
     document.body.style.userSelect = ''
   }
 }
 
-// Calcola la larghezza del waveform in base alla durata e al pixel per secondo
 const waveformWidth = computed(() => {
   return (props.duration || 0) * props.pixelsPerSecond
 })
@@ -171,12 +252,10 @@ onMounted(() => {
     videoElement.addEventListener('loadedmetadata', () => {
       videoSrc.value = getVideoSrc()
     })
-    
-    // Imposta subito il src se disponibile
+
     videoSrc.value = getVideoSrc()
   }
-  
-  // Event listeners per il dragging del playhead
+
   document.addEventListener('mousemove', handleMouseMove)
   document.addEventListener('mouseup', handleMouseUp)
 })
@@ -190,7 +269,6 @@ onUnmounted(() => {
     videoElement.removeEventListener('pause', updateProgress)
   }
   
-  // Rimuovi event listeners del dragging
   document.removeEventListener('mousemove', handleMouseMove)
   document.removeEventListener('mouseup', handleMouseUp)
 })
@@ -257,7 +335,10 @@ onUnmounted(() => {
           v-for="sub in processedSubtitles" 
           :key="sub.id"
           class="sub-block"
-          :class="{ 'sub-block-active': isSubtitleActive(sub) }"
+          :class="{ 
+            'sub-block-active': isSubtitleActive(sub),
+            'sub-block-dragging': draggingSubtitle?.id === sub.id || resizingSubtitle?.id === sub.id
+          }"
           :style="{ 
             position: 'absolute',
             left: '0px',
@@ -266,8 +347,17 @@ onUnmounted(() => {
             transform: `translateX(${sub.start * pixelsPerSecond}px)` 
           }"
           :title="sub.originalTimestamp"
+          @mousedown="(e) => handleSubtitleMouseDown(e, sub)"
         >
+          <div 
+            class="resize-handle resize-handle-left"
+            @mousedown.stop="(e) => handleSubtitleMouseDown(e, sub, 'left')"
+          ></div>
           <span class="sub-block-text">{{ sub.text }}</span>
+          <div 
+            class="resize-handle resize-handle-right"
+            @mousedown.stop="(e) => handleSubtitleMouseDown(e, sub, 'right')"
+          ></div>
         </div>
       </div>
     </div>
@@ -288,8 +378,6 @@ onUnmounted(() => {
   grid-template-rows: 60px 60px 60px;
   align-items: center;
 }
-
-
 
 .timeline-wrapper {
   width: 100%;
@@ -333,7 +421,7 @@ onUnmounted(() => {
 }
 
 .track-area {
-  height: 180px;
+  height: 200px;
   position: relative;
   background: #141414;
   background-image: linear-gradient(to right, #222 1px, transparent 1px);
@@ -378,7 +466,6 @@ onUnmounted(() => {
   position: absolute;
   top: -30px;
   left: 0;
-  height: 150px;
   z-index: 100;
   pointer-events: all;
   cursor: grab;
@@ -390,7 +477,7 @@ onUnmounted(() => {
 
 .playhead-line {
   width: 2px;
-  height: 180px;
+  height: 230px;
   background: #ff4500;
   box-shadow: 0 0 5px rgba(255, 69, 0, 0.5);
 }
@@ -400,16 +487,24 @@ onUnmounted(() => {
   background: rgba(0, 120, 215, 0.5);
   border: 1px solid #0078d7;
   border-radius: 4px;
-  padding: 4px;
+  padding: 4px 8px;
   overflow: hidden;
   color: white;
   font-size: 11px;
-  cursor: pointer;
+  cursor: grab;
   z-index: 5;
   display: flex;
   align-items: center;
   box-sizing: border-box;
   transition: all 0.2s ease;
+  position: relative;
+  user-select: none;
+}
+
+.sub-block-dragging {
+  cursor: grabbing;
+  opacity: 0.8;
+  z-index: 15;
 }
 
 .sub-block-active {
@@ -424,9 +519,36 @@ onUnmounted(() => {
   text-overflow: ellipsis;
   display: block;
   overflow: hidden;
+  flex: 1;
+  pointer-events: none;
 }
 
 .sub-block:hover {
   background: rgba(0, 120, 215, 0.8);
+}
+
+.resize-handle {
+  position: absolute;
+  top: 0;
+  width: 8px;
+  height: 100%;
+  cursor: ew-resize;
+  z-index: 10;
+  opacity: 0;
+  transition: opacity 0.2s;
+}
+
+.resize-handle-left {
+  left: 0;
+  background: linear-gradient(to right, rgba(255,255,255,0.3), transparent);
+}
+
+.resize-handle-right {
+  right: 0;
+  background: linear-gradient(to left, rgba(255,255,255,0.3), transparent);
+}
+
+.sub-block:hover .resize-handle {
+  opacity: 1;
 }
 </style>
