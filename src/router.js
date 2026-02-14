@@ -9,7 +9,7 @@ import Myprojects from './views/myprojects.vue'
 const routes = [
   { path: '/', component: Home },
   { path: '/home', component: Home },
-  { path: '/editor:', name: 'video-player',component: editingView},
+  { path: '/editor', name: 'video-player',component: editingView},
   { path: '/signup', component: signup},
   { path: '/login', component: login},
   { path: '/myprojects', component: Myprojects}

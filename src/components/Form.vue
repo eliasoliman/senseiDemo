@@ -49,7 +49,7 @@ let loading = ref(false)
 const videoFile = ref(null)
 const projectName = ref('')
 const apiTransPost ='https://api.matita.net/translate/translation-start'
-const apiConverionPost = ' https://api.matita.net/whisper/conversion-start'
+const apiConversionPost = ' https://api.matita.net/whisper/conversion-start'
 const apiTransStatus = 'https://api.matita.net/translate/translation-status'
 const apiConverionStatus = 'https://api.matita.net/whisper/conversion-status'
 const apiTransGet = 'https://api.matita.net/translate/translation-out'
@@ -78,7 +78,7 @@ async function createProject() {
 
       console.log('Inizio caricamento video...');
 
-      const conversionJob = await axios.post(apiConverionPost, formData, {
+      const conversionJob = await axios.post(apiConversionPost, formData, {
         headers: {
           'Authorization': 'Bearer dkPJpR2DqOLPppgQn4oIGPcdQ7W_zgGYvOyf2HTJPxE',        
           'Content-Type': 'multipart/form-data'
@@ -158,7 +158,7 @@ async function createProject() {
 
       const maxAttemptss = 300;
       const pollIntervall = 1000;
-      let conversionCompletedd = false;
+      let translationCompleted = false;
       
       for (let attempt = 1; attempt <= maxAttemptss; attempt++) {
         console.log(`Controllo status (tentativo ${attempt})...`);
@@ -177,18 +177,18 @@ async function createProject() {
         
         if (state === 'completed') {
           console.log('Conversione completata!');
-          conversionCompletedd = true;
+          translationCompleted = true;
           break;
         }
         
         if (state === 'fail') {
-          throw new Error(error || 'Conversione fallita');
+          throw new Error(response.data?.error || response.data?.message || 'Conversione fallita');
         }
         
         await new Promise(resolve => setTimeout(resolve, pollIntervall));
       }
 
-      if (!conversionCompleted) {
+      if (!translationCompleted) {
         throw new Error('Timeout: conversione non completata');
       }
 

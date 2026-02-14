@@ -270,7 +270,7 @@ watch(videoPlayer, (newPlayer) => {
               v-if="videoDuration > 0"
               :duration="videoDuration"
               :videoRef="videoPlayer"
-              :subtitles="subtitles"
+              v-model:subtitles="subtitles"
               v-model:pixelsPerSecond="pixelsPerSecond"
             />
           </div>
