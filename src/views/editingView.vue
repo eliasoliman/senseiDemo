@@ -381,8 +381,8 @@ h3 {
   scroll-behavior: smooth;
 }
 .subtitle-block { 
-  padding: 1rem; 
-  margin-bottom: 0.8rem; 
+  padding: 0.1rem; 
+  margin-bottom: 0.3rem; 
   background: #2a2d31; 
   border-left: 4px solid rgba(18, 83, 163, 0.918); 
   border-radius: 4px;
@@ -494,7 +494,6 @@ h3 {
 background: rgba(137, 41, 234, 1);
 }
 
-/* Modal styles */
 .modal-overlay {
   position: fixed;
   top: 0;

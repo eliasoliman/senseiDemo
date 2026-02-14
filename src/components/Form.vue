@@ -48,12 +48,12 @@ const router = useRouter()
 let loading = ref(false)
 const videoFile = ref(null)
 const projectName = ref('')
-const apiSubPost ='http://dh-server.fbk.eu:7380/create-subtitling-project'
-const apiConverionPost = 'http://dh-server.fbk.eu:7382/conversion-start'
-const apiSubStatus = 'http://dh-server.fbk.eu:7380/project-state'
-const apiConverionStatus = 'http://dh-server.fbk.eu:7382/conversion-status'
-const apiSubGet = 'http://dh-server.fbk.eu:7380/project-subtitles'
-const apiConverionGet = 'http://dh-server.fbk.eu:7382/conversion-out'
+const apiTransPost ='https://api.matita.net/translate/translation-start'
+const apiConverionPost = ' https://api.matita.net/whisper/conversion-start'
+const apiTransStatus = 'https://api.matita.net/translate/translation-status'
+const apiConverionStatus = 'https://api.matita.net/whisper/conversion-status'
+const apiTransGet = 'https://api.matita.net/translate/translation-out'
+const apiConverionGet = 'https://api.matita.net/whisper/conversion-out'
 
 
 function handleDrop(event) {
@@ -80,6 +80,7 @@ async function createProject() {
 
       const conversionJob = await axios.post(apiConverionPost, formData, {
         headers: {
+          'Authorization': 'Bearer dkPJpR2DqOLPppgQn4oIGPcdQ7W_zgGYvOyf2HTJPxE',        
           'Content-Type': 'multipart/form-data'
         }
       });
@@ -89,14 +90,18 @@ async function createProject() {
 
       console.log('Attendo completamento conversione...');
       
-      const maxAttempts = 300;
+      const maxAttempts = 3000;
       const pollInterval = 1000;
       let conversionCompleted = false;
       
       for (let attempt = 1; attempt <= maxAttempts; attempt++) {
         console.log(`Controllo status (tentativo ${attempt})...`);
         
-        const statusResponse = await axios.get(`${apiConverionStatus}?id=${jobId}`);
+        const statusResponse = await axios.get(`${apiConverionStatus}?id=${jobId}`, {
+          headers: {
+            'Authorization': 'Bearer dkPJpR2DqOLPppgQn4oIGPcdQ7W_zgGYvOyf2HTJPxE'
+          }
+        });
         
         console.log('Response:', statusResponse.data); 
         
@@ -121,46 +126,56 @@ async function createProject() {
         throw new Error('Timeout: conversione non completata');
       }
 
-      console.log('Recupero file audio convertito...');
+      console.log('Recupero sottotitoli ...');
 
-      const audioResponse = await axios.get(`${apiConverionGet}?id=${jobId}`, {
-      responseType: 'blob'  
-      });
+      const subtitlesResponse =  await axios.get(`${apiConverionGet}?id=${jobId}`, {
+          headers: {
+            'Authorization': 'Bearer dkPJpR2DqOLPppgQn4oIGPcdQ7W_zgGYvOyf2HTJPxE'
+          }
+        });
 
-      const audioData = audioResponse.data;
+      const subtitlesData = subtitlesResponse.data;
       
-      console.log('Audio pronto!');
-      console.log(typeof audioData)
+      console.log('Sottotitoli Pronti!');
+      console.log(subtitlesData)
 
       const formDataa = new FormData();
 
-      formDataa.append('audiofile', audioData, 'audio.mp3');
-      formDataa.append('source', videoLanguage.value);
-      formDataa.append('target', targetLanguage.value);
+      const srtFile = new Blob([subtitlesData], { type: 'text/plain' });
+      formDataa.append('file', srtFile, 'subtitles.srt');
 
-      const crSubResponse = await axios.post(apiSubPost, formDataa, {
+      const crSubResponse = await axios.post(apiTransPost, formDataa, {
+        params: {
+          output_lang: targetLanguage.value,
+          input_lang: videoLanguage.value
+        },
         headers: {
+          'Authorization': 'Bearer vCTOu2ktyp49O6HPThgKxqlJcgthQ1YX2YkvZxARJSlBqdDyHubi9cmgkyh7ozz8',
           'Content-Type': 'multipart/form-data'
         }
       }); 
-      const id = crSubResponse.data.data.id
+      const id = crSubResponse.data.id
 
-      const maxAttemptss = 30;
+      const maxAttemptss = 300;
       const pollIntervall = 1000;
       let conversionCompletedd = false;
       
       for (let attempt = 1; attempt <= maxAttemptss; attempt++) {
         console.log(`Controllo status (tentativo ${attempt})...`);
         
-        const stateResponse = await axios.get(`${apiSubStatus}?id=${id}`);
+        const stateResponse =  await axios.get(`${apiTransStatus}?id=${id}`, {
+          headers: {
+            'Authorization': 'Bearer vCTOu2ktyp49O6HPThgKxqlJcgthQ1YX2YkvZxARJSlBqdDyHubi9cmgkyh7ozz8'
+          }
+        });
         
         console.log('Response:', stateResponse.data); 
         
-        const state= stateResponse.data.data.state;
+        const state= stateResponse.data.status;
         console.log(state)
         console.log(`Status attuale: ${state}`);
         
-        if (state === 'ready') {
+        if (state === 'completed') {
           console.log('Conversione completata!');
           conversionCompletedd = true;
           break;
@@ -177,7 +192,11 @@ async function createProject() {
         throw new Error('Timeout: conversione non completata');
       }
 
-      const subResponse = await axios.get(`${apiSubGet}?id=${id}`)
+      const subResponse = await axios.get(`${apiTransGet}?id=${id}`, {
+          headers: {
+            'Authorization': 'Bearer vCTOu2ktyp49O6HPThgKxqlJcgthQ1YX2YkvZxARJSlBqdDyHubi9cmgkyh7ozz8'
+          }
+        })
       .then(response => {
     const data = response.data;
     
