@@ -6,13 +6,14 @@ const props = defineProps({
   duration: Number,
   videoRef: Object,
   subtitles: Array,
+  tranSubtitles: Array,
   pixelsPerSecond: {
     type: Number,
     default: 80
   }
 })
 
-const emit = defineEmits(['update:subtitles'])
+const emit = defineEmits(['update:subtitles', 'update:tranSubtitles'])
 
 const timelineWrapper = ref(null)
 const currentTime = ref(0)
@@ -26,6 +27,8 @@ const resizeEdge = ref(null)
 const dragStartX = ref(0)
 const dragStartTime = ref(0)
 const dragStartDuration = ref(0)
+const subtitleType = ref(null)
+const isClick = ref(true)
 
 
 const getVideoSrc = () => {
@@ -72,8 +75,9 @@ const formatTimestampToSrt = (startTime, duration) => {
   return `${formatSrtTime(startTime)} --> ${formatSrtTime(endTime)}`
 }
 
-const updateSubtitleTimestamp = (subId, newStart, newDuration) => {
-  const updatedSubs = [...props.subtitles]
+const updateSubtitleTimestamp = (subId, newStart, newDuration, type) => {
+  const isTran = type === 'tran'
+  const updatedSubs = isTran ? [...props.tranSubtitles] : [...props.subtitles]
   const subToUpdate = updatedSubs[subId]
   
   if (subToUpdate) {
@@ -85,7 +89,11 @@ const updateSubtitleTimestamp = (subId, newStart, newDuration) => {
       return timeA - timeB
     })
     
-    emit('update:subtitles', updatedSubs)
+    if (isTran) {
+      emit('update:tranSubtitles', updatedSubs)
+    } else {
+      emit('update:subtitles', updatedSubs)
+    }
   }
 }
 
@@ -106,9 +114,36 @@ const processedSubtitles = computed(() => {
   })
 })
 
+const processedTranSubtitles = computed(() => {
+  if (!props.tranSubtitles || props.tranSubtitles.length === 0) return []
+  
+  return props.tranSubtitles.map((sub, index) => {
+    const start = parseSrtTimestamp(sub.timestamp)
+    const duration = parseSrtDuration(sub.timestamp)
+    
+    return {
+      id: index,
+      start, 
+      duration,
+      text: sub.testo || sub.text || '',
+      originalTimestamp: sub.timestamp
+    }
+  })
+})
+
 const isSubtitleActive = (sub) => {
   const time = currentTime.value
   return time >= sub.start && time <= (sub.start + sub.duration)
+}
+
+const handleSubtitleClick = (sub, type) => {
+  if (!isClick.value) return
+  
+  if (type === 'tran' && props.videoRef) {
+    const videoElement = props.videoRef.value || props.videoRef
+    videoElement.currentTime = sub.start
+    videoElement.pause()
+  }
 }
 
 const updateProgress = () => {
@@ -119,7 +154,7 @@ const updateProgress = () => {
 }
 
 watch(currentTime, (newVal) => {
-  if (!timelineWrapper.value || !isPlaying.value) return
+  if (!timelineWrapper.value) return
   
   const container = timelineWrapper.value
   const playheadPosition = newVal * props.pixelsPerSecond
@@ -164,22 +199,25 @@ const formatTime = (seconds) => {
   return `${m}:${s.toString().padStart(2, '0')}`
 }
 
-const handleSubtitleMouseDown = (event, sub, edge = null) => {
+const handleSubtitleMouseDown = (event, sub, edge = null, type = null) => {
   event.preventDefault()
   event.stopPropagation()
   
-  if (edge) {
+  isClick.value = true
+  subtitleType.value = type
+  
+  if (edge && edge !== 'tran' && edge !== 'orig') {
     resizingSubtitle.value = sub
     resizeEdge.value = edge
     dragStartDuration.value = sub.duration
-  } else {
+  } else if (!edge || edge === 'tran' || edge === 'orig') {
     draggingSubtitle.value = sub
   }
   
   dragStartX.value = event.clientX
   dragStartTime.value = sub.start
   
-  document.body.style.cursor = edge ? 'ew-resize' : 'grabbing'
+  document.body.style.cursor = (edge && edge !== 'tran' && edge !== 'orig') ? 'ew-resize' : 'grabbing'
   document.body.style.userSelect = 'none'
 }
 
@@ -204,25 +242,27 @@ const handleMouseMove = (event) => {
   }
 
   if (draggingSubtitle.value) {
+    isClick.value = false
     const deltaX = event.clientX - dragStartX.value
     const deltaTime = deltaX / props.pixelsPerSecond
     const newStart = Math.max(0, Math.min(dragStartTime.value + deltaTime, props.duration - draggingSubtitle.value.duration))
     
-    updateSubtitleTimestamp(draggingSubtitle.value.id, newStart, draggingSubtitle.value.duration)
+    updateSubtitleTimestamp(draggingSubtitle.value.id, newStart, draggingSubtitle.value.duration, subtitleType.value)
     return
   }
   
   if (resizingSubtitle.value) {
+    isClick.value = false
     const deltaX = event.clientX - dragStartX.value
     const deltaTime = deltaX / props.pixelsPerSecond
     
     if (resizeEdge.value === 'left') {
       const newStart = Math.max(0, Math.min(dragStartTime.value + deltaTime, dragStartTime.value + dragStartDuration.value - 0.5))
       const newDuration = dragStartTime.value + dragStartDuration.value - newStart
-      updateSubtitleTimestamp(resizingSubtitle.value.id, newStart, newDuration)
+      updateSubtitleTimestamp(resizingSubtitle.value.id, newStart, newDuration, subtitleType.value)
     } else if (resizeEdge.value === 'right') {
       const newDuration = Math.max(0.5, dragStartDuration.value + deltaTime)
-      updateSubtitleTimestamp(resizingSubtitle.value.id, resizingSubtitle.value.start, newDuration)
+      updateSubtitleTimestamp(resizingSubtitle.value.id, resizingSubtitle.value.start, newDuration, subtitleType.value)
     }
   }
 }
@@ -233,6 +273,7 @@ const handleMouseUp = () => {
     draggingSubtitle.value = null
     resizingSubtitle.value = null
     resizeEdge.value = null
+    subtitleType.value = null
     document.body.style.cursor = ''
     document.body.style.userSelect = ''
   }
@@ -331,9 +372,10 @@ onUnmounted(() => {
           </div>
         </div>
 
+        <!-- Track 1 - tranSubtitles -->
         <div 
-          v-for="sub in processedSubtitles" 
-          :key="sub.id"
+          v-for="sub in processedTranSubtitles" 
+          :key="'tran-' + sub.id"
           class="sub-block"
           :class="{ 
             'sub-block-active': isSubtitleActive(sub),
@@ -347,16 +389,46 @@ onUnmounted(() => {
             transform: `translateX(${sub.start * pixelsPerSecond}px)` 
           }"
           :title="sub.originalTimestamp"
-          @mousedown="(e) => handleSubtitleMouseDown(e, sub)"
+          @click="handleSubtitleClick(sub, 'tran')"
+          @mousedown="(e) => handleSubtitleMouseDown(e, sub, null, 'tran')"
         >
           <div 
             class="resize-handle resize-handle-left"
-            @mousedown.stop="(e) => handleSubtitleMouseDown(e, sub, 'left')"
+            @mousedown.stop="(e) => handleSubtitleMouseDown(e, sub, 'left', 'tran')"
           ></div>
           <span class="sub-block-text">{{ sub.text }}</span>
           <div 
             class="resize-handle resize-handle-right"
-            @mousedown.stop="(e) => handleSubtitleMouseDown(e, sub, 'right')"
+            @mousedown.stop="(e) => handleSubtitleMouseDown(e, sub, 'right', 'tran')"
+          ></div>
+        </div>
+
+        <!-- Track 2 - subtitles originali -->
+        <div 
+          v-for="sub in processedSubtitles" 
+          :key="'orig-' + sub.id"
+          class="sub-block"
+          :class="{ 
+            'sub-block-dragging': draggingSubtitle?.id === sub.id || resizingSubtitle?.id === sub.id
+          }"
+          :style="{ 
+            position: 'absolute',
+            left: '0px',
+            top: '130px',
+            width: (sub.duration * pixelsPerSecond) + 'px',
+            transform: `translateX(${sub.start * pixelsPerSecond}px)` 
+          }"
+          :title="sub.originalTimestamp"
+          @mousedown="(e) => handleSubtitleMouseDown(e, sub, null, 'orig')"
+        >
+          <div 
+            class="resize-handle resize-handle-left"
+            @mousedown.stop="(e) => handleSubtitleMouseDown(e, sub, 'left', 'orig')"
+          ></div>
+          <span class="sub-block-text">{{ sub.text }}</span>
+          <div 
+            class="resize-handle resize-handle-right"
+            @mousedown.stop="(e) => handleSubtitleMouseDown(e, sub, 'right', 'orig')"
           ></div>
         </div>
       </div>

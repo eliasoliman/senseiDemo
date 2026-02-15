@@ -5,6 +5,7 @@ import subTimeline from '../components/subTimeline.vue'
 const videoUrl = ref('')
 const videoFile = ref(null)
 const subtitles = ref([])
+const tranSubtitles = ref([])
 const videoPlayer = ref(null) 
 const isPlaying = ref(false)
 const zoomLevel = ref(1)
@@ -14,7 +15,7 @@ const videoDuration = ref(0)
 const pixelsPerSecond = ref(80)
 const subtitlesScroll = ref(null)
 
-// Modal state
+
 const showModal = ref(false)
 const editingIndex = ref(-1)
 const editForm = ref({
@@ -42,10 +43,10 @@ const parseSrtTimestamp = (timestampStr) => {
 }
 
 const getActiveSubtitleIndex = () => {
-  if (!subtitles.value || subtitles.value.length === 0) return -1
+  if (!tranSubtitles.value || tranSubtitles.value.length === 0) return -1
   
-  for (let i = 0; i < subtitles.value.length; i++) {
-    const sub = subtitles.value[i]
+  for (let i = 0; i < tranSubtitles.value.length; i++) {
+    const sub = tranSubtitles.value[i]
     const start = parseSrtTimestamp(sub.timestamp)
     
     let duration = 2 
@@ -65,7 +66,7 @@ const getActiveSubtitleIndex = () => {
 const activeSubtitleText = computed(() => {
   const activeIndex = getActiveSubtitleIndex()
   if (activeIndex < 0) return ''
-  return subtitles.value[activeIndex]?.testo || ''
+  return tranSubtitles.value[activeIndex]?.testo || ''
 })
 
 const scrollSidebarToActive = () => {
@@ -96,6 +97,16 @@ const isSubtitleActive = (index) => {
   return getActiveSubtitleIndex() === index
 }
 
+const handleSidebarDoubleClick = (index) => {
+  if (!videoPlayer.value || !tranSubtitles.value[index]) return
+  
+  const sub = tranSubtitles.value[index]
+  const startTime = parseSrtTimestamp(sub.timestamp)
+  
+  videoPlayer.value.currentTime = startTime
+  videoPlayer.value.pause()
+}
+
 const setupVideoSync = () => {
   if (videoPlayer.value) {
     videoPlayer.value.onloadedmetadata = () => {
@@ -119,8 +130,8 @@ const setupVideoSync = () => {
 const openEditModal = (index) => {
   editingIndex.value = index
   editForm.value = {
-    timestamp: subtitles.value[index].timestamp,
-    testo: subtitles.value[index].testo
+    timestamp: tranSubtitles.value[index].timestamp,
+    testo: tranSubtitles.value[index].testo
   }
   showModal.value = true
   
@@ -137,18 +148,18 @@ const closeModal = () => {
 
 const saveEdit = () => {
   if (editingIndex.value >= 0) {
-    subtitles.value[editingIndex.value] = {
+    tranSubtitles.value[editingIndex.value] = {
       timestamp: editForm.value.timestamp,
       testo: editForm.value.testo
     }
     
-    subtitles.value.sort((a, b) => {
+    tranSubtitles.value.sort((a, b) => {
       const timeA = parseSrtTimestamp(a.timestamp)
       const timeB = parseSrtTimestamp(b.timestamp)
       return timeA - timeB
     })
     
-    localStorage.setItem('subtitles', JSON.stringify(subtitles.value))
+    localStorage.setItem('tranSubtitles', JSON.stringify(tranSubtitles.value))
     
     closeModal()
   }
@@ -167,6 +178,11 @@ onMounted(() => {
   const stored = localStorage.getItem('subtitles')
   if (stored) {
     subtitles.value = JSON.parse(stored)
+  }
+
+  const storedTran = localStorage.getItem('tranSubtitles')
+  if (storedTran) {
+    tranSubtitles.value = JSON.parse(storedTran)
   }
 
   nextTick(() => {
@@ -227,10 +243,11 @@ watch(videoPlayer, (newPlayer) => {
         <div class="sidebar">
             <div class="subtitles-scroll" ref="subtitlesScroll">
               <div 
-                v-for="(subtitle, index) in subtitles" 
+                v-for="(subtitle, index) in tranSubtitles" 
                 :key="index" 
                 class="subtitle-block"
                 :class="{ 'subtitle-block-active': isSubtitleActive(index) }"
+                @dblclick="handleSidebarDoubleClick(index)"
               >
                 <span class="timestamp">{{ subtitle.timestamp }}</span>
                 <p class="testo">{{ subtitle.testo }}</p>
@@ -271,6 +288,7 @@ watch(videoPlayer, (newPlayer) => {
               :duration="videoDuration"
               :videoRef="videoPlayer"
               v-model:subtitles="subtitles"
+              v-model:tranSubtitles="tranSubtitles"
               v-model:pixelsPerSecond="pixelsPerSecond"
             />
           </div>
@@ -388,6 +406,11 @@ h3 {
   border-radius: 4px;
   transition: all 0.3s ease;
   position: relative;
+  cursor: pointer;
+}
+
+.subtitle-block:hover {
+  background: #353841;
 }
 
 .subtitle-block-active {

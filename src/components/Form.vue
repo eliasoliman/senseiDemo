@@ -12,13 +12,6 @@
         <p v-if="!videoFile">Drop your video source here</p>
         <p v-else>Selected file: {{ videoFile.name }}</p>
       </div>
-      <p>Video language</p>
-      <select class="form-select mb-3" v-model="videoLanguage">
-        <option value="">Select the language</option>
-        <option value="en">English</option>
-        <option value="it">Italian</option>
-        <option value="fr">French</option>
-      </select>
       <p>Target language</p>
       <select class="form-select mb-3" v-model="targetLanguage">
         <option value="">Select the language</option>
@@ -42,18 +35,21 @@ import { ref } from 'vue'
 import axios from 'axios'
 import { useRouter } from 'vue-router'
 
-const videoLanguage = ref('');
 const targetLanguage = ref('');
 const router = useRouter()
 let loading = ref(false)
 const videoFile = ref(null)
 const projectName = ref('')
-const apiTransPost ='https://api.matita.net/translate/translation-start'
+let subtitles = []
+let tranSubtitles = []
+
 const apiConversionPost = ' https://api.matita.net/whisper/conversion-start'
-const apiTransStatus = 'https://api.matita.net/translate/translation-status'
-const apiConverionStatus = 'https://api.matita.net/whisper/conversion-status'
-const apiTransGet = 'https://api.matita.net/translate/translation-out'
-const apiConverionGet = 'https://api.matita.net/whisper/conversion-out'
+const apiConversionStatus = 'https://api.matita.net/whisper/conversion-status'
+const apiConversionOut = 'https://api.matita.net/whisper/conversion-out'
+const apiConversionLang = 'https://api.matita.net/whisper/conversion-lang'
+const apiConversionTranslated = 'https://api.matita.net/whisper/conversion-translated'
+
+const tokenBearer= 'Bearer dkPJpR2DqOLPppgQn4oIGPcdQ7W_zgGYvOyf2HTJPxE'
 
 
 function handleDrop(event) {
@@ -80,8 +76,11 @@ async function createProject() {
 
       const conversionJob = await axios.post(apiConversionPost, formData, {
         headers: {
-          'Authorization': 'Bearer dkPJpR2DqOLPppgQn4oIGPcdQ7W_zgGYvOyf2HTJPxE',        
+          'Authorization': tokenBearer,        
           'Content-Type': 'multipart/form-data'
+        },
+        params:{
+          translate_to: targetLanguage.value
         }
       });
 
@@ -97,9 +96,9 @@ async function createProject() {
       for (let attempt = 1; attempt <= maxAttempts; attempt++) {
         console.log(`Controllo status (tentativo ${attempt})...`);
         
-        const statusResponse = await axios.get(`${apiConverionStatus}?id=${jobId}`, {
+        const statusResponse = await axios.get(`${apiConversionStatus}?id=${jobId}`, {
           headers: {
-            'Authorization': 'Bearer dkPJpR2DqOLPppgQn4oIGPcdQ7W_zgGYvOyf2HTJPxE'
+            'Authorization': tokenBearer
           }
         });
         
@@ -126,113 +125,70 @@ async function createProject() {
         throw new Error('Timeout: conversione non completata');
       }
 
+      const sourceLang =await axios.get(`${apiConversionLang}?id=${jobId}`, {
+          headers: {
+            'Authorization': tokenBearer
+          }
+        });
+      console.log(sourceLang.data)  
+
       console.log('Recupero sottotitoli ...');
 
-      const subtitlesResponse =  await axios.get(`${apiConverionGet}?id=${jobId}`, {
-          headers: {
-            'Authorization': 'Bearer dkPJpR2DqOLPppgQn4oIGPcdQ7W_zgGYvOyf2HTJPxE'
-          }
-        });
-
-      const subtitlesData = subtitlesResponse.data;
-      
-      console.log('Sottotitoli Pronti!');
-      console.log(subtitlesData)
-
-      const formDataa = new FormData();
-
-      const srtFile = new Blob([subtitlesData], { type: 'text/plain' });
-      formDataa.append('file', srtFile, 'subtitles.srt');
-
-      const crSubResponse = await axios.post(apiTransPost, formDataa, {
-        params: {
-          output_lang: targetLanguage.value,
-          input_lang: videoLanguage.value
-        },
+      const subtitlesResponse = await axios.get(`${apiConversionOut}?id=${jobId}`, {
         headers: {
-          'Authorization': 'Bearer vCTOu2ktyp49O6HPThgKxqlJcgthQ1YX2YkvZxARJSlBqdDyHubi9cmgkyh7ozz8',
-          'Content-Type': 'multipart/form-data'
+          'Authorization': tokenBearer
         }
-      }); 
-      const id = crSubResponse.data.id
-
-      const maxAttemptss = 300;
-      const pollIntervall = 1000;
-      let translationCompleted = false;
-      
-      for (let attempt = 1; attempt <= maxAttemptss; attempt++) {
-        console.log(`Controllo status (tentativo ${attempt})...`);
+      }).then(subtitlesResponse => {
+        const sub = subtitlesResponse.data;
+        const blocchi = sub.trim().split(/\r?\n\r?\n/);
         
-        const stateResponse =  await axios.get(`${apiTransStatus}?id=${id}`, {
-          headers: {
-            'Authorization': 'Bearer vCTOu2ktyp49O6HPThgKxqlJcgthQ1YX2YkvZxARJSlBqdDyHubi9cmgkyh7ozz8'
+        subtitles = blocchi.map(blocco => {  
+          const righe = blocco.split(/\r?\n/);
+          if (righe.length >= 3) {
+            return {
+              timestamp: righe[1],           
+              testo: righe.slice(2).join(' ') 
+            };
           }
-        });
+          return null;
+        }).filter(item => item !== null); 
         
-        console.log('Response:', stateResponse.data); 
-        
-        const state= stateResponse.data.status;
-        console.log(state)
-        console.log(`Status attuale: ${state}`);
-        
-        if (state === 'completed') {
-          console.log('Conversione completata!');
-          translationCompleted = true;
-          break;
-        }
-        
-        if (state === 'fail') {
-          throw new Error(response.data?.error || response.data?.message || 'Conversione fallita');
-        }
-        
-        await new Promise(resolve => setTimeout(resolve, pollIntervall));
-      }
+        localStorage.setItem('subtitles', JSON.stringify(subtitles));
+      });
 
-      if (!translationCompleted) {
-        throw new Error('Timeout: conversione non completata');
-      }
-
-      const subResponse = await axios.get(`${apiTransGet}?id=${id}`, {
-          headers: {
-            'Authorization': 'Bearer vCTOu2ktyp49O6HPThgKxqlJcgthQ1YX2YkvZxARJSlBqdDyHubi9cmgkyh7ozz8'
+      const TranslatedSubtitles = await axios.get(`${apiConversionTranslated}?id=${jobId}`, {
+        headers: {
+          'Authorization': tokenBearer
+        }
+      }).then(response => {
+        const data = response.data;
+        const blocchi = data.trim().split(/\r?\n\r?\n/);
+        
+        tranSubtitles = blocchi.map(blocco => {  
+          const righe = blocco.split(/\r?\n/);
+          if (righe.length >= 3) {
+            return {
+              timestamp: righe[1],           
+              testo: righe.slice(2).join(' ') 
+            };
           }
-        })
-      .then(response => {
-    const data = response.data;
-    
-    const blocchi = data.trim().split(/\r?\n\r?\n/);
-    
-    const subtitles = blocchi.map(blocco => {
-      const righe = blocco.split(/\r?\n/);
-      
-      if (righe.length >= 3) {
-        return {
-          timestamp: righe[1],           
-          testo: righe.slice(2).join(' ') 
-        };
-      }
-      return null;
-    }).filter(item => item !== null); 
-    console.log('Array con timestamp:', subtitles);
-     loading.value = false;
-      console.log('1. Subtitles prima di salvare:', subtitles.length)
+          return null;
+        }).filter(item => item !== null);
+        
+        localStorage.setItem('tranSubtitles', JSON.stringify(tranSubtitles)); 
+      });
 
-      localStorage.setItem('subtitles', JSON.stringify(subtitles))
+      loading.value = false;
 
-      console.log('2. Salvato! Verifico subito:', localStorage.getItem('subtitles'))
-
-      if(loading.value == false){
-        router.push({
-            name: 'video-player',
-            state: { videoFile: videoFile.value,
-                    projectName: projectName.value,
-                    subtitles: subtitles
-            }
-          })
-      }
-  });
-
-
+      router.push({
+        name: 'video-player',
+        state: { 
+          videoFile: videoFile.value,
+          projectName: projectName.value,
+          subtitles: subtitles,          // Ora sono accessibili!
+          tranSubtitles: tranSubtitles
+        }
+      });
     } catch (error) {
       console.error('Errore completo:', error);
       console.error('Risposta server:', error.response?.data);

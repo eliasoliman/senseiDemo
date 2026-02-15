@@ -68,6 +68,10 @@ h1{
   background: rgba(255, 255, 255, 0.2) !important;
   box-shadow: 0 8px 25px rgba(255, 255, 255, 0.4);
 }
+form{
+  min-width: 100%;
+  min-height: 100%;
+}
 
 
 @media (max-width: 768px) {
