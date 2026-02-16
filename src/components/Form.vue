@@ -24,8 +24,29 @@
        
     </div>
       <div v-if="loading" class="loading-overlay">
-          <div class="spinner"></div> 
-          <div> <h1>This operation may take a minute</h1></div>
+          <div class="progress-container">
+            <h2>Processing your video...</h2>
+            
+            <div class="progress-section">
+              <div class="progress-label">
+                <span>Transcribing</span>
+                <span class="progress-percent">{{ transcribingProgress }}%</span>
+              </div>
+              <div class="progress-bar-wrapper">
+                <div class="progress-bar" :style="{ width: transcribingProgress + '%' }"></div>
+              </div>
+            </div>
+
+            <div class="progress-section">
+              <div class="progress-label">
+                <span>Translating</span>
+                <span class="progress-percent">{{ translatingProgress }}%</span>
+              </div>
+              <div class="progress-bar-wrapper">
+                <div class="progress-bar" :style="{ width: translatingProgress + '%' }"></div>
+              </div>
+            </div>
+          </div>
       </div>
   </div>
 </template>
@@ -42,6 +63,9 @@ const videoFile = ref(null)
 const projectName = ref('')
 let subtitles = []
 let tranSubtitles = []
+
+const transcribingProgress = ref(0)
+const translatingProgress = ref(0)
 
 const apiConversionPost = ' https://api.matita.net/whisper/conversion-start'
 const apiConversionStatus = 'https://api.matita.net/whisper/conversion-status'
@@ -69,6 +93,9 @@ async function createProject() {
   }
     try {
        loading.value = true;
+       transcribingProgress.value = 0;
+       translatingProgress.value = 0;
+       
       const formData = new FormData();
       formData.append('file', videoFile.value);
 
@@ -104,12 +131,22 @@ async function createProject() {
         
         console.log('Response:', statusResponse.data); 
         
-        const { status, error } = statusResponse.data;
+        const { status, error, stage, progress } = statusResponse.data;
         
-        console.log(`   Status attuale: ${status}`);
+        console.log(`   Status attuale: ${status}, Stage: ${stage}, Progress: ${progress}`);
+        
+        // Aggiorna le barre di progresso in base allo stage
+        if (stage === 'transcribing') {
+          transcribingProgress.value = Math.round(progress || 0);
+        } else if (stage === 'translating') {
+          transcribingProgress.value = 100; // Trascrizione completata
+          translatingProgress.value = Math.round(progress || 0);
+        }
         
         if (status === 'completed') {
           console.log('Conversione completata!');
+          transcribingProgress.value = 100;
+          translatingProgress.value = 100;
           conversionCompleted = true;
           break;
         }
@@ -275,7 +312,7 @@ h1 {
 .loading-overlay {
   position: fixed;
   inset: 0;
-  background-color: rgba(0, 0, 0, 0.659);
+  background-color: rgba(0, 0, 0, 0.8);
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -283,18 +320,58 @@ h1 {
   z-index: 9999;
 }
 
-.spinner {
-  width: 64px;
-  height: 64px;
-  border: 4px solid white;
-  border-top-color: transparent;
-  border-radius: 50%;
-  animation: spin 1s linear infinite;
+.progress-container {
+  background: rgba(42, 42, 42, 0.7);
+  padding: 3rem;
+  border-radius: 12px;
+  min-width: 500px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(74, 74, 74, 0.5);
 }
 
-@keyframes spin {
-  to {
-    transform: rotate(360deg);
-  }
+.progress-container h2 {
+  color: #ffffff;
+  margin-bottom: 2rem;
+  text-align: center;
+  font-size: 1.5rem;
+}
+
+.progress-section {
+  margin-bottom: 2rem;
+}
+
+.progress-section:last-child {
+  margin-bottom: 0;
+}
+
+.progress-label {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 0.5rem;
+  color: #e0e0e0;
+  font-weight: 500;
+}
+
+.progress-percent {
+  color: #4a90e2;
+  font-weight: 600;
+}
+
+.progress-bar-wrapper {
+  width: 100%;
+  height: 24px;
+  background-color: #333333;
+  border-radius: 12px;
+  overflow: hidden;
+  border: 1px solid #4a4a4a;
+}
+
+.progress-bar {
+  height: 100%;
+  background: linear-gradient(90deg, #4a90e2, #357abd);
+  border-radius: 12px;
+  transition: width 0.3s ease;
+  box-shadow: 0 0 10px rgba(74, 144, 226, 0.5);
 }
 </style>
