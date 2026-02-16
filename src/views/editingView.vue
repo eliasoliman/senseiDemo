@@ -14,6 +14,8 @@ const currentTime = ref(0)
 const videoDuration = ref(0)
 const pixelsPerSecond = ref(80)
 const subtitlesScroll = ref(null)
+const selectedSubtitleIndex = ref(-1)
+const isPlayingSelectedSubtitle = ref(false)
 
 
 const showModal = ref(false)
@@ -97,6 +99,23 @@ const isSubtitleActive = (index) => {
   return getActiveSubtitleIndex() === index
 }
 
+const checkSubtitleEnd = () => {
+  if (selectedSubtitleIndex.value >= 0 && isPlayingSelectedSubtitle.value) {
+    const sub = tranSubtitles.value[selectedSubtitleIndex.value]
+    if (!sub) return
+    
+    const startTime = parseSrtTimestamp(sub.timestamp)
+    const parts = sub.timestamp.split('-->')
+    const endTime = parts.length > 1 ? parseSrtTimestamp(parts[1].trim()) : startTime + 2
+    
+    if (currentTime.value >= endTime) {
+      videoPlayer.value.pause()
+      selectedSubtitleIndex.value = -1
+      isPlayingSelectedSubtitle.value = false
+    }
+  }
+}
+
 const handleSidebarDoubleClick = (index) => {
   if (!videoPlayer.value || !tranSubtitles.value[index]) return
   
@@ -105,7 +124,39 @@ const handleSidebarDoubleClick = (index) => {
   
   videoPlayer.value.currentTime = startTime
   videoPlayer.value.pause()
+  
+  // Imposta il blocco selezionato
+  selectedSubtitleIndex.value = index
+  isPlayingSelectedSubtitle.value = false
 }
+
+const handleSubtitleSelect = (index) => {
+  selectedSubtitleIndex.value = index
+  isPlayingSelectedSubtitle.value = false
+  
+  // Scroll della sidebar verso il blocco selezionato
+  if (subtitlesScroll.value && tranSubtitles.value[index]) {
+    nextTick(() => {
+      const container = subtitlesScroll.value
+      const blocks = container.querySelectorAll('.subtitle-block')
+      
+      if (blocks[index]) {
+        const block = blocks[index]
+        const containerHeight = container.clientHeight
+        const blockTop = block.offsetTop
+        const blockHeight = block.clientHeight
+        const targetScroll = blockTop - (containerHeight / 2) + (blockHeight / 2)
+        
+        container.scrollTo({
+          top: Math.max(0, targetScroll),
+          behavior: 'smooth'
+        })
+      }
+    })
+  }
+}
+
+provide('onSubtitleSelect', handleSubtitleSelect)
 
 const setupVideoSync = () => {
   if (videoPlayer.value) {
@@ -115,10 +166,14 @@ const setupVideoSync = () => {
 
     videoPlayer.value.ontimeupdate = () => {
       currentTime.value = videoPlayer.value.currentTime
+      checkSubtitleEnd()
     }
     
     videoPlayer.value.onplay = () => {
       isPlaying.value = true
+      if (selectedSubtitleIndex.value >= 0 && !isPlayingSelectedSubtitle.value) {
+        isPlayingSelectedSubtitle.value = true
+      }
     }
     
     videoPlayer.value.onpause = () => {

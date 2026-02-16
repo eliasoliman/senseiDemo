@@ -185,7 +185,7 @@ async function createProject() {
         state: { 
           videoFile: videoFile.value,
           projectName: projectName.value,
-          subtitles: subtitles,          // Ora sono accessibili!
+          subtitles: subtitles,          
           tranSubtitles: tranSubtitles
         }
       });

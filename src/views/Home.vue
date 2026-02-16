@@ -54,7 +54,7 @@ h1{
 .main-content {
   max-width: 40rem;
   padding: 0 1rem;
-  transform: translateY(97px);
+  transform: translateY(33%);
 }
 
 .btn{

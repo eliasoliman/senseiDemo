@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed, onMounted, onUnmounted, watch, nextTick } from 'vue'
+import { ref, computed, onMounted, onUnmounted, watch, inject } from 'vue'
 import { AVWaveform } from 'vue-audio-visual'
 
 const props = defineProps({
@@ -30,6 +30,9 @@ const dragStartDuration = ref(0)
 const subtitleType = ref(null)
 const isClick = ref(true)
 
+const MIN_SUBTITLE_DURATION = 0.2 // 200ms in secondi
+
+const onSubtitleSelect = inject('onSubtitleSelect', null)
 
 const getVideoSrc = () => {
   if (!props.videoRef) return ''
@@ -59,7 +62,7 @@ const parseSrtTimestamp = (timestampStr) => {
 const parseSrtDuration = (timestampStr) => {
   if (!timestampStr.includes('-->')) return 2
   const parts = timestampStr.split('-->').map(t => parseSrtTimestamp(t.trim()))
-  return Math.max(0.5, parts[1] - parts[0])
+  return Math.max(0.1, parts[1] - parts[0])
 }
 
 const formatTimestampToSrt = (startTime, duration) => {
@@ -82,12 +85,6 @@ const updateSubtitleTimestamp = (subId, newStart, newDuration, type) => {
   
   if (subToUpdate) {
     subToUpdate.timestamp = formatTimestampToSrt(newStart, newDuration)
-    
-    updatedSubs.sort((a, b) => {
-      const timeA = parseSrtTimestamp(a.timestamp)
-      const timeB = parseSrtTimestamp(b.timestamp)
-      return timeA - timeB
-    })
     
     if (isTran) {
       emit('update:tranSubtitles', updatedSubs)
@@ -143,6 +140,10 @@ const handleSubtitleClick = (sub, type) => {
     const videoElement = props.videoRef.value || props.videoRef
     videoElement.currentTime = sub.start
     videoElement.pause()
+    
+    if (onSubtitleSelect) {
+      onSubtitleSelect(sub.id)
+    }
   }
 }
 
@@ -212,6 +213,7 @@ const handleSubtitleMouseDown = (event, sub, edge = null, type = null) => {
     dragStartDuration.value = sub.duration
   } else if (!edge || edge === 'tran' || edge === 'orig') {
     draggingSubtitle.value = sub
+    dragStartDuration.value = sub.duration
   }
   
   dragStartX.value = event.clientX
@@ -231,39 +233,92 @@ const handlePlayheadMouseDown = (event) => {
 const handleMouseMove = (event) => {
   if (isDragging.value && !draggingSubtitle.value && !resizingSubtitle.value) {
     if (!props.videoRef || !timelineWrapper.value) return
-    
     const videoElement = props.videoRef.value || props.videoRef
     const rect = timelineWrapper.value.getBoundingClientRect()
     const clickX = event.clientX - rect.left + timelineWrapper.value.scrollLeft
     const newTime = Math.max(0, Math.min(clickX / props.pixelsPerSecond, props.duration))
-    
     videoElement.currentTime = newTime
     return
   }
 
+  const isTran = subtitleType.value === 'tran'
+  const currentData = isTran ? processedTranSubtitles.value : processedSubtitles.value
+  const currentList = isTran ? [...props.tranSubtitles] : [...props.subtitles]
+  const deltaX = event.clientX - dragStartX.value
+  const deltaTime = deltaX / props.pixelsPerSecond
+
   if (draggingSubtitle.value) {
     isClick.value = false
-    const deltaX = event.clientX - dragStartX.value
-    const deltaTime = deltaX / props.pixelsPerSecond
-    const newStart = Math.max(0, Math.min(dragStartTime.value + deltaTime, props.duration - draggingSubtitle.value.duration))
-    
-    updateSubtitleTimestamp(draggingSubtitle.value.id, newStart, draggingSubtitle.value.duration, subtitleType.value)
-    return
+    const subId = draggingSubtitle.value.id
+    const duration = dragStartDuration.value
+    let newStart = dragStartTime.value + deltaTime
+    let newEnd = newStart + duration
+
+    currentData.forEach((s) => {
+      if (s.id === subId) return
+      // Verso destra: sovrascrive fino a 200ms del vicino
+      if (dragStartTime.value + duration <= s.start + 0.001) {
+        const minPossibleStartOfNext = s.start + s.duration - MIN_SUBTITLE_DURATION
+        const wall = Math.min(s.start, minPossibleStartOfNext)
+        if (newEnd > s.start) {
+          newEnd = Math.min(newEnd, minPossibleStartOfNext)
+          newStart = newEnd - duration
+          if (newEnd > s.start) {
+             currentList[s.id].timestamp = formatTimestampToSrt(newEnd, (s.start + s.duration) - newEnd)
+          }
+        }
+      }
+      // Verso sinistra: sovrascrive fino a 200ms del vicino
+      if (dragStartTime.value >= s.start + s.duration - 0.001) {
+        const maxPossibleEndOfPrev = s.start + MIN_SUBTITLE_DURATION
+        const wall = Math.max(s.start + s.duration, maxPossibleEndOfPrev)
+        if (newStart < s.start + s.duration) {
+          newStart = Math.max(newStart, maxPossibleEndOfPrev)
+          newEnd = newStart + duration
+          if (newStart < s.start + s.duration) {
+             currentList[s.id].timestamp = formatTimestampToSrt(s.start, newStart - s.start)
+          }
+        }
+      }
+    })
+
+    newStart = Math.max(0, Math.min(newStart, (props.duration || 0) - duration))
+    currentList[subId].timestamp = formatTimestampToSrt(newStart, duration)
+    emit(isTran ? 'update:tranSubtitles' : 'update:subtitles', currentList)
   }
-  
+
   if (resizingSubtitle.value) {
     isClick.value = false
-    const deltaX = event.clientX - dragStartX.value
-    const deltaTime = deltaX / props.pixelsPerSecond
-    
-    if (resizeEdge.value === 'left') {
-      const newStart = Math.max(0, Math.min(dragStartTime.value + deltaTime, dragStartTime.value + dragStartDuration.value - 0.5))
-      const newDuration = dragStartTime.value + dragStartDuration.value - newStart
-      updateSubtitleTimestamp(resizingSubtitle.value.id, newStart, newDuration, subtitleType.value)
-    } else if (resizeEdge.value === 'right') {
-      const newDuration = Math.max(0.5, dragStartDuration.value + deltaTime)
-      updateSubtitleTimestamp(resizingSubtitle.value.id, resizingSubtitle.value.start, newDuration, subtitleType.value)
+    const subId = resizingSubtitle.value.id
+    if (resizeEdge.value === 'right') {
+      let newEnd = resizingSubtitle.value.start + Math.max(MIN_SUBTITLE_DURATION, dragStartDuration.value + deltaTime)
+      currentData.forEach(s => {
+        if (s.id === subId) return
+        if (s.start >= resizingSubtitle.value.start + dragStartDuration.value - 0.001) {
+          const limit = s.start + s.duration - MIN_SUBTITLE_DURATION
+          newEnd = Math.min(newEnd, limit)
+          if (newEnd > s.start) {
+            currentList[s.id].timestamp = formatTimestampToSrt(newEnd, (s.start + s.duration) - newEnd)
+          }
+        }
+      })
+      currentList[subId].timestamp = formatTimestampToSrt(resizingSubtitle.value.start, newEnd - resizingSubtitle.value.start)
+    } else {
+      let newStart = Math.min(dragStartTime.value + deltaTime, (dragStartTime.value + dragStartDuration.value) - MIN_SUBTITLE_DURATION)
+      newStart = Math.max(0, newStart)
+      currentData.forEach(s => {
+        if (s.id === subId) return
+        if (s.start + s.duration <= dragStartTime.value + 0.001) {
+          const limit = s.start + MIN_SUBTITLE_DURATION
+          newStart = Math.max(newStart, limit)
+          if (newStart < s.start + s.duration) {
+            currentList[s.id].timestamp = formatTimestampToSrt(s.start, newStart - s.start)
+          }
+        }
+      })
+      currentList[subId].timestamp = formatTimestampToSrt(newStart, (dragStartTime.value + dragStartDuration.value) - newStart)
     }
+    emit(isTran ? 'update:tranSubtitles' : 'update:subtitles', currentList)
   }
 }
 
@@ -286,17 +341,14 @@ const waveformWidth = computed(() => {
 onMounted(() => {
   if (props.videoRef) {
     const videoElement = props.videoRef.value || props.videoRef
-    
     videoElement.addEventListener('timeupdate', updateProgress)
     videoElement.addEventListener('play', updateProgress)
     videoElement.addEventListener('pause', updateProgress)
     videoElement.addEventListener('loadedmetadata', () => {
       videoSrc.value = getVideoSrc()
     })
-
     videoSrc.value = getVideoSrc()
   }
-
   document.addEventListener('mousemove', handleMouseMove)
   document.addEventListener('mouseup', handleMouseUp)
 })
@@ -304,12 +356,10 @@ onMounted(() => {
 onUnmounted(() => {
   if (props.videoRef) {
     const videoElement = props.videoRef.value || props.videoRef
-    
     videoElement.removeEventListener('timeupdate', updateProgress)
     videoElement.removeEventListener('play', updateProgress)
     videoElement.removeEventListener('pause', updateProgress)
   }
-  
   document.removeEventListener('mousemove', handleMouseMove)
   document.removeEventListener('mouseup', handleMouseUp)
 })
@@ -372,7 +422,6 @@ onUnmounted(() => {
           </div>
         </div>
 
-        <!-- Track 1 - tranSubtitles -->
         <div 
           v-for="sub in processedTranSubtitles" 
           :key="'tran-' + sub.id"
@@ -403,7 +452,6 @@ onUnmounted(() => {
           ></div>
         </div>
 
-        <!-- Track 2 - subtitles originali -->
         <div 
           v-for="sub in processedSubtitles" 
           :key="'orig-' + sub.id"
@@ -582,7 +630,6 @@ onUnmounted(() => {
 .sub-block-active {
   border-color: #8025f7;
   box-shadow: 0 0 10px rgba(137, 41, 234, 0.6);
-  transform: translateX(var(--translate-x)) scale(1.05);
   z-index: 10;
 }
 
