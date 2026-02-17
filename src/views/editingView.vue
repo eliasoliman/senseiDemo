@@ -44,6 +44,85 @@ const parseSrtTimestamp = (timestampStr) => {
   return 0
 }
 
+const parseSrtTimestampEnd = (timestampStr) => {
+  if (!timestampStr || !timestampStr.includes('-->')) return 0
+  const endTime = timestampStr.split('-->')[1].trim().replace(',', '.')
+  const parts = endTime.split(':').map(Number)
+  if (parts.length === 3) {
+    return (parts[0] * 3600) + (parts[1] * 60) + parts[2]
+  }
+  return 0
+}
+
+// Formatta secondi in stringa SRT: HH:MM:SS,mmm
+const formatSrtTimestamp = (seconds) => {
+  const h = Math.floor(seconds / 3600)
+  const m = Math.floor((seconds % 3600) / 60)
+  const s = Math.floor(seconds % 60)
+  const ms = Math.round((seconds % 1) * 1000)
+  return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')},${String(ms).padStart(3, '0')}`
+}
+
+const buildTimestamp = (startSec, endSec) => {
+  return `${formatSrtTimestamp(startSec)} --> ${formatSrtTimestamp(endSec)}`
+}
+
+// Aggiunge un sottotitolo vuoto da 200ms tra index e index+1
+const addSubtitleBetween = (index) => {
+  const DEFAULT_DURATION = 0.2 // 200ms
+
+  const prev = tranSubtitles.value[index]
+  const next = tranSubtitles.value[index + 1]
+
+  const newStart = parseSrtTimestampEnd(prev.timestamp)
+  const newEnd = newStart + DEFAULT_DURATION
+
+  // Se il nuovo sottotitolo si sovrappone al successivo, accorcia il successivo
+  if (next) {
+    const nextStart = parseSrtTimestamp(next.timestamp)
+    const nextEnd = parseSrtTimestampEnd(next.timestamp)
+    if (newEnd > nextStart) {
+      const adjustedNextStart = newEnd
+      // Se il successivo verrebbe annullato, lascialo con almeno 1ms
+      const adjustedNextEnd = Math.max(nextEnd, adjustedNextStart + 0.001)
+      next.timestamp = buildTimestamp(adjustedNextStart, adjustedNextEnd)
+    }
+  }
+
+  const newSub = {
+    timestamp: buildTimestamp(newStart, newEnd),
+    testo: ''
+  }
+
+  tranSubtitles.value.splice(index + 1, 0, newSub)
+  localStorage.setItem('tranSubtitles', JSON.stringify(tranSubtitles.value))
+}
+
+// Unisce i due sottotitoli ai lati del separatore (index e index+1)
+const mergeSubtitles = (index) => {
+  const a = tranSubtitles.value[index]
+  const b = tranSubtitles.value[index + 1]
+  if (!a || !b) return
+
+  const startSec = parseSrtTimestamp(a.timestamp)
+  const endSec = parseSrtTimestampEnd(b.timestamp)
+
+  const merged = {
+    timestamp: buildTimestamp(startSec, endSec),
+    testo: [a.testo, b.testo].filter(t => t.trim()).join(' ')
+  }
+
+  tranSubtitles.value.splice(index, 2, merged)
+  localStorage.setItem('tranSubtitles', JSON.stringify(tranSubtitles.value))
+
+  // Aggiusta l'indice selezionato se necessario
+  if (selectedSubtitleIndex.value === index + 1) {
+    selectedSubtitleIndex.value = index
+  } else if (selectedSubtitleIndex.value > index + 1) {
+    selectedSubtitleIndex.value--
+  }
+}
+
 const getActiveSubtitleIndex = () => {
   if (!tranSubtitles.value || tranSubtitles.value.length === 0) return -1
   
@@ -125,7 +204,6 @@ const handleSidebarDoubleClick = (index) => {
   videoPlayer.value.currentTime = startTime
   videoPlayer.value.pause()
   
-  // Imposta il blocco selezionato
   selectedSubtitleIndex.value = index
   isPlayingSelectedSubtitle.value = false
 }
@@ -134,7 +212,6 @@ const handleSubtitleSelect = (index) => {
   selectedSubtitleIndex.value = index
   isPlayingSelectedSubtitle.value = false
   
-  // Scroll della sidebar verso il blocco selezionato
   if (subtitlesScroll.value && tranSubtitles.value[index]) {
     nextTick(() => {
       const container = subtitlesScroll.value
@@ -179,6 +256,17 @@ const setupVideoSync = () => {
     videoPlayer.value.onpause = () => {
       isPlaying.value = false
     }
+  }
+}
+
+const deleteSubtitle = (index) => {
+  tranSubtitles.value.splice(index, 1)
+  localStorage.setItem('tranSubtitles', JSON.stringify(tranSubtitles.value))
+
+  if (selectedSubtitleIndex.value === index) {
+    selectedSubtitleIndex.value = -1
+  } else if (selectedSubtitleIndex.value > index) {
+    selectedSubtitleIndex.value--
   }
 }
 
@@ -297,17 +385,40 @@ watch(videoPlayer, (newPlayer) => {
       <div class="content">
         <div class="sidebar">
             <div class="subtitles-scroll" ref="subtitlesScroll">
-              <div 
-                v-for="(subtitle, index) in tranSubtitles" 
-                :key="index" 
-                class="subtitle-block"
-                :class="{ 'subtitle-block-active': isSubtitleActive(index) }"
-                @dblclick="handleSidebarDoubleClick(index)"
-              >
-                <span class="timestamp">{{ subtitle.timestamp }}</span>
-                <p class="testo">{{ subtitle.testo }}</p>
-                <button class="btn-edit" @click="openEditModal(index)">Edit</button>
-              </div>
+              <template v-for="(subtitle, index) in tranSubtitles" :key="index">
+                <!-- Blocco sottotitolo -->
+                <div 
+                  class="subtitle-block"
+                  :class="{ 'subtitle-block-active': isSubtitleActive(index) }"
+                  @dblclick="handleSidebarDoubleClick(index)"
+                >
+                  <span class="timestamp">{{ subtitle.timestamp }}</span>
+                  <p class="testo">{{ subtitle.testo }}</p>
+                  <button class="btn-delete" @click.stop="deleteSubtitle(index)" title="Elimina sottotitolo">✕</button>
+                  <button class="btn-edit" @click="openEditModal(index)">Edit</button>
+                </div>
+
+                <!-- Separatore con pulsanti Add e Merge (tra ogni coppia di blocchi) -->
+                <div
+                  v-if="index < tranSubtitles.length - 1"
+                  class="subtitle-separator"
+                >
+                  <div class="separator-line"></div>
+                  <div class="separator-actions">
+                    <button
+                      class="btn-sep btn-add"
+                      title="Aggiungi sottotitolo vuoto qui"
+                      @click.stop="addSubtitleBetween(index)"
+                    >+ add</button>
+                    <button
+                      class="btn-sep btn-merge"
+                      title="Unisci i due sottotitoli"
+                      @click.stop="mergeSubtitles(index)"
+                    >⊕ merge</button>
+                  </div>
+                  <div class="separator-line"></div>
+                </div>
+              </template>
             </div>
         </div>
 
@@ -455,7 +566,7 @@ h3 {
 }
 .subtitle-block { 
   padding: 0.1rem; 
-  margin-bottom: 0.3rem; 
+  margin-bottom: 0;
   background: #2a2d31; 
   border-left: 4px solid rgba(18, 83, 163, 0.918); 
   border-radius: 4px;
@@ -494,6 +605,70 @@ h3 {
   margin-bottom: 0.5rem;
 }
 
+/* ── Separatore con pulsanti Add / Merge ── */
+.subtitle-separator {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 4px;
+  opacity: 0.25;
+  transition: opacity 0.2s ease;
+}
+
+.subtitle-separator:hover {
+  opacity: 1;
+}
+
+.separator-line {
+  flex: 1;
+  height: 1px;
+  background: rgba(255, 255, 255, 0.12);
+}
+
+.separator-actions {
+  display: flex;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.btn-sep {
+  padding: 1px 8px;
+  font-size: 0.68rem;
+  font-weight: 600;
+  border: none;
+  border-radius: 3px;
+  cursor: pointer;
+  line-height: 1.6;
+  letter-spacing: 0.02em;
+  transition: all 0.15s ease;
+  white-space: nowrap;
+}
+
+.btn-add {
+  background: rgba(18, 83, 163, 0.5);
+  color: #c8dcff;
+  border: 1px solid rgba(18, 83, 163, 0.7);
+}
+
+.btn-add:hover {
+  background: rgba(18, 83, 163, 0.9);
+  color: #fff;
+  box-shadow: 0 2px 6px rgba(18, 83, 163, 0.4);
+}
+
+.btn-merge {
+  background: rgba(137, 41, 234, 0.35);
+  color: #d9b8ff;
+  border: 1px solid rgba(137, 41, 234, 0.55);
+}
+
+.btn-merge:hover {
+  background: rgba(137, 41, 234, 0.8);
+  color: #fff;
+  box-shadow: 0 2px 6px rgba(137, 41, 234, 0.4);
+}
+
+/* ── Fine separatore ── */
 
 .video-area { 
   background-color: rgb(33, 32, 32); 
@@ -543,6 +718,25 @@ h3 {
 }
 .zoomIcons { 
   cursor: pointer; 
+}
+
+.btn-delete {
+  position: absolute;
+  bottom: 8px;
+  right: 56px;
+  background: rgba(180, 40, 40, 0.7);
+  color: #fff;
+  border: none;
+  padding: 4px 10px;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.btn-delete:hover {
+  background: rgba(210, 40, 40, 1);
+  transform: translateY(-1px);
 }
 
 .btn-edit {
