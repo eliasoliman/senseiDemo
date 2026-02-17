@@ -54,7 +54,6 @@ const parseSrtTimestampEnd = (timestampStr) => {
   return 0
 }
 
-// Formatta secondi in stringa SRT: HH:MM:SS,mmm
 const formatSrtTimestamp = (seconds) => {
   const h = Math.floor(seconds / 3600)
   const m = Math.floor((seconds % 3600) / 60)
@@ -67,9 +66,8 @@ const buildTimestamp = (startSec, endSec) => {
   return `${formatSrtTimestamp(startSec)} --> ${formatSrtTimestamp(endSec)}`
 }
 
-// Aggiunge un sottotitolo vuoto da 200ms tra index e index+1
 const addSubtitleBetween = (index) => {
-  const DEFAULT_DURATION = 0.2 // 200ms
+  const DEFAULT_DURATION = 0.2
 
   const prev = tranSubtitles.value[index]
   const next = tranSubtitles.value[index + 1]
@@ -77,13 +75,11 @@ const addSubtitleBetween = (index) => {
   const newStart = parseSrtTimestampEnd(prev.timestamp)
   const newEnd = newStart + DEFAULT_DURATION
 
-  // Se il nuovo sottotitolo si sovrappone al successivo, accorcia il successivo
   if (next) {
     const nextStart = parseSrtTimestamp(next.timestamp)
     const nextEnd = parseSrtTimestampEnd(next.timestamp)
     if (newEnd > nextStart) {
       const adjustedNextStart = newEnd
-      // Se il successivo verrebbe annullato, lascialo con almeno 1ms
       const adjustedNextEnd = Math.max(nextEnd, adjustedNextStart + 0.001)
       next.timestamp = buildTimestamp(adjustedNextStart, adjustedNextEnd)
     }
@@ -98,7 +94,6 @@ const addSubtitleBetween = (index) => {
   localStorage.setItem('tranSubtitles', JSON.stringify(tranSubtitles.value))
 }
 
-// Unisce i due sottotitoli ai lati del separatore (index e index+1)
 const mergeSubtitles = (index) => {
   const a = tranSubtitles.value[index]
   const b = tranSubtitles.value[index + 1]
@@ -115,7 +110,6 @@ const mergeSubtitles = (index) => {
   tranSubtitles.value.splice(index, 2, merged)
   localStorage.setItem('tranSubtitles', JSON.stringify(tranSubtitles.value))
 
-  // Aggiusta l'indice selezionato se necessario
   if (selectedSubtitleIndex.value === index + 1) {
     selectedSubtitleIndex.value = index
   } else if (selectedSubtitleIndex.value > index + 1) {
@@ -394,9 +388,13 @@ watch(videoPlayer, (newPlayer) => {
                 >
                   <span class="timestamp">{{ subtitle.timestamp }}</span>
                   <p class="testo">{{ subtitle.testo }}</p>
-                  <button class="btn-delete" @click.stop="deleteSubtitle(index)" title="Elimina sottotitolo">Delete</button>
-                  <button class="btn-edit" @click="openEditModal(index)">Edit</button>
+                  <div class="block-actions">
+                    <button class="btn-delete" @click.stop="deleteSubtitle(index)" title="Elimina sottotitolo">Delete</button>
+                    <button class="btn-edit" @click.stop="openEditModal(index)">Edit</button>
+                  </div>
                 </div>
+
+                <!-- Separatore con pulsanti Add e Merge -->
                 <div
                   v-if="index < tranSubtitles.length - 1"
                   class="subtitle-separator"
@@ -562,14 +560,17 @@ h3 {
   min-height: 0;
   scroll-behavior: smooth;
 }
+
+/* ── Blocco sottotitolo ── */
 .subtitle-block { 
-  padding: 0.1rem; 
+  display: flex;
+  flex-direction: column;
+  padding: 1px ;
   margin-bottom: 0;
   background: #2a2d31; 
   border-left: 4px solid rgba(18, 83, 163, 0.918); 
   border-radius: 4px;
   transition: all 0.3s ease;
-  position: relative;
   cursor: pointer;
 }
 
@@ -588,7 +589,8 @@ h3 {
   font-weight: bold; 
   color: rgba(18, 83, 163, 0.918); 
   font-size: 0.85rem; 
-  margin-bottom: 0.5rem; 
+  margin-bottom: 4px;
+  flex-shrink: 0;
 }
 
 .subtitle-block-active .timestamp {
@@ -596,11 +598,64 @@ h3 {
 }
 
 .testo { 
-  margin: 0; 
+  margin: 0 0 6px 0;
   color: #fff; 
   line-height: 1.4; 
-  font-size: 0.9rem; 
-  margin-bottom: 0.5rem;
+  font-size: 0.9rem;
+  word-break: break-word;
+}
+
+/* ── Riga bottoni in fondo al blocco ── */
+.block-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+.btn-delete,
+.btn-edit {
+  padding: 3px 10px;
+  border: none;
+  border-radius: 4px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  line-height: 1.5;
+}
+
+.btn-delete {
+  background: rgba(180, 40, 40, 0.65);
+  color: #ffd5d5;
+}
+
+.btn-delete:hover {
+  background: rgba(210, 40, 40, 1);
+  color: #fff;
+  transform: translateY(-1px);
+}
+
+.btn-edit {
+  background: rgba(18, 83, 163, 0.8);
+  color: #c8dcff;
+}
+
+.btn-edit:hover {
+  background: rgba(18, 83, 163, 1);
+  color: #fff;
+  transform: translateY(-1px);
+}
+
+.subtitle-block-active .btn-edit {
+  background: rgba(137, 41, 234, 0.75);
+  color: #e8d5ff;
+}
+
+.subtitle-block-active .btn-edit:hover {
+  background: rgba(137, 41, 234, 1);
+  color: #fff;
 }
 
 /* ── Separatore con pulsanti Add / Merge ── */
@@ -666,8 +721,7 @@ h3 {
   box-shadow: 0 2px 6px rgba(137, 41, 234, 0.4);
 }
 
-/* ── Fine separatore ── */
-
+/* ── Video area ── */
 .video-area { 
   background-color: rgb(33, 32, 32); 
   display: grid; 
@@ -718,52 +772,7 @@ h3 {
   cursor: pointer; 
 }
 
-.btn-delete {
-  position: absolute;
-  bottom: 8px;
-  right: 56px;
-  background: rgba(180, 40, 40, 0.7);
-  color: #fff;
-  border: none;
-  padding: 4px 10px;
-  border-radius: 4px;
-  font-size: 0.75rem;
-  cursor: pointer;
-  transition: all 0.2s ease;
-}
-
-.btn-delete:hover {
-  background: rgba(210, 40, 40, 1);
-  transform: translateY(-1px);
-}
-
-.btn-edit {
-  position: absolute;
-  bottom: 8px;
-  right: 8px;
-  background: rgba(18, 83, 163, 0.918);
-  color: #fff;
-  border: none;
-  padding: 4px 12px;
-  border-radius: 4px;
-  font-size: 0.75rem;
-  cursor: pointer;
-  transition: all 0.2s ease;
-}
-
-.btn-edit:hover {
-  background: rgba(18, 83, 163, 1);
-  transform: translateY(-1px);
-}
-
-.subtitle-block-active .btn-edit {
-  background: rgba(137, 41, 234, 0.8);
-}
-
-.subtitle-block-active .btn-edit:hover {
-background: rgba(137, 41, 234, 1);
-}
-
+/* ── Modale ── */
 .modal-overlay {
   position: fixed;
   top: 0;
