@@ -394,11 +394,9 @@ watch(videoPlayer, (newPlayer) => {
                 >
                   <span class="timestamp">{{ subtitle.timestamp }}</span>
                   <p class="testo">{{ subtitle.testo }}</p>
-                  <button class="btn-delete" @click.stop="deleteSubtitle(index)" title="Elimina sottotitolo">✕</button>
+                  <button class="btn-delete" @click.stop="deleteSubtitle(index)" title="Elimina sottotitolo">Delete</button>
                   <button class="btn-edit" @click="openEditModal(index)">Edit</button>
                 </div>
-
-                <!-- Separatore con pulsanti Add e Merge (tra ogni coppia di blocchi) -->
                 <div
                   v-if="index < tranSubtitles.length - 1"
                   class="subtitle-separator"
