@@ -135,12 +135,11 @@ async function createProject() {
         
         console.log(`   Status attuale: ${status}, Stage: ${stage}, Progress: ${progress}`);
         
-        // Aggiorna le barre di progresso in base allo stage
         if (stage === 'transcribing') {
-          transcribingProgress.value = Math.round(progress || 0);
+          transcribingProgress.value = Math.trunc(progress || 0);
         } else if (stage === 'translating') {
-          transcribingProgress.value = 100; // Trascrizione completata
-          translatingProgress.value = Math.round(progress || 0);
+          transcribingProgress.value = 100; 
+          translatingProgress.value = Math.trunc(progress || 0);
         }
         
         if (status === 'completed') {

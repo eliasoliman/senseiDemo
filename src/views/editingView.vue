@@ -1,6 +1,9 @@
 <script setup>
 import { onMounted, onUnmounted, ref, provide, nextTick, watch, computed } from 'vue'
+import { useRouter } from 'vue-router'
 import subTimeline from '../components/subTimeline.vue'
+
+const router = useRouter()
 
 const videoUrl = ref('')
 const videoFile = ref(null)
@@ -17,6 +20,40 @@ const subtitlesScroll = ref(null)
 const selectedSubtitleIndex = ref(-1)
 const isPlayingSelectedSubtitle = ref(false)
 
+// Which track is shown in the sidebar: 'tran' (Track 1) or 'orig' (Track 2)
+const activeSidebarTrack = ref('tran')
+
+// The array currently shown in the sidebar
+const sidebarSubtitles = computed(() =>
+  activeSidebarTrack.value === 'tran' ? tranSubtitles.value : subtitles.value
+)
+
+const undoStack = ref([])
+const MAX_UNDO = 50
+
+const saveUndoSnapshot = () => {
+  const snapshot = {
+    tranSubtitles: JSON.parse(JSON.stringify(tranSubtitles.value)),
+    subtitles: JSON.parse(JSON.stringify(subtitles.value))
+  }
+  undoStack.value.push(snapshot)
+  if (undoStack.value.length > MAX_UNDO) {
+    undoStack.value.shift()
+  }
+}
+
+const undo = () => {
+  if (undoStack.value.length === 0) return
+  const snapshot = undoStack.value.pop()
+  tranSubtitles.value = snapshot.tranSubtitles
+  subtitles.value = snapshot.subtitles
+  localStorage.setItem('tranSubtitles', JSON.stringify(tranSubtitles.value))
+  localStorage.setItem('subtitles', JSON.stringify(subtitles.value))
+}
+
+const canUndo = computed(() => undoStack.value.length > 0)
+
+provide('saveUndoSnapshot', saveUndoSnapshot)
 
 const showModal = ref(false)
 const editingIndex = ref(-1)
@@ -37,7 +74,6 @@ const parseSrtTimestamp = (timestampStr) => {
   if (!timestampStr) return 0
   const startTime = timestampStr.split('-->')[0].trim().replace(',', '.')
   const parts = startTime.split(':').map(Number)
-  
   if (parts.length === 3) {
     return (parts[0] * 3600) + (parts[1] * 60) + parts[2]
   }
@@ -67,10 +103,12 @@ const buildTimestamp = (startSec, endSec) => {
 }
 
 const addSubtitleBetween = (index) => {
+  saveUndoSnapshot()
   const DEFAULT_DURATION = 0.2
+  const targetArray = activeSidebarTrack.value === 'tran' ? tranSubtitles : subtitles
 
-  const prev = tranSubtitles.value[index]
-  const next = tranSubtitles.value[index + 1]
+  const prev = targetArray.value[index]
+  const next = targetArray.value[index + 1]
 
   const newStart = parseSrtTimestampEnd(prev.timestamp)
   const newEnd = newStart + DEFAULT_DURATION
@@ -90,13 +128,15 @@ const addSubtitleBetween = (index) => {
     testo: ''
   }
 
-  tranSubtitles.value.splice(index + 1, 0, newSub)
-  localStorage.setItem('tranSubtitles', JSON.stringify(tranSubtitles.value))
+  targetArray.value.splice(index + 1, 0, newSub)
+  localStorage.setItem(activeSidebarTrack.value === 'tran' ? 'tranSubtitles' : 'subtitles', JSON.stringify(targetArray.value))
 }
 
 const mergeSubtitles = (index) => {
-  const a = tranSubtitles.value[index]
-  const b = tranSubtitles.value[index + 1]
+  saveUndoSnapshot()
+  const targetArray = activeSidebarTrack.value === 'tran' ? tranSubtitles : subtitles
+  const a = targetArray.value[index]
+  const b = targetArray.value[index + 1]
   if (!a || !b) return
 
   const startSec = parseSrtTimestamp(a.timestamp)
@@ -107,8 +147,8 @@ const mergeSubtitles = (index) => {
     testo: [a.testo, b.testo].filter(t => t.trim()).join(' ')
   }
 
-  tranSubtitles.value.splice(index, 2, merged)
-  localStorage.setItem('tranSubtitles', JSON.stringify(tranSubtitles.value))
+  targetArray.value.splice(index, 2, merged)
+  localStorage.setItem(activeSidebarTrack.value === 'tran' ? 'tranSubtitles' : 'subtitles', JSON.stringify(targetArray.value))
 
   if (selectedSubtitleIndex.value === index + 1) {
     selectedSubtitleIndex.value = index
@@ -117,11 +157,13 @@ const mergeSubtitles = (index) => {
   }
 }
 
+// Active subtitle index based on which track is shown in sidebar
 const getActiveSubtitleIndex = () => {
-  if (!tranSubtitles.value || tranSubtitles.value.length === 0) return -1
+  const arr = sidebarSubtitles.value
+  if (!arr || arr.length === 0) return -1
   
-  for (let i = 0; i < tranSubtitles.value.length; i++) {
-    const sub = tranSubtitles.value[i]
+  for (let i = 0; i < arr.length; i++) {
+    const sub = arr[i]
     const start = parseSrtTimestamp(sub.timestamp)
     
     let duration = 2 
@@ -138,10 +180,24 @@ const getActiveSubtitleIndex = () => {
   return -1
 }
 
+// Subtitle text shown as overlay — always from tranSubtitles (Track 1)
 const activeSubtitleText = computed(() => {
-  const activeIndex = getActiveSubtitleIndex()
-  if (activeIndex < 0) return ''
-  return tranSubtitles.value[activeIndex]?.testo || ''
+  const arr = activeSidebarTrack.value === 'tran' ? tranSubtitles.value : subtitles.value
+  if (!arr || arr.length === 0) return ''
+  for (let i = 0; i < arr.length; i++) {
+    const sub = arr[i]
+    const start = parseSrtTimestamp(sub.timestamp)
+    let duration = 2
+    if (sub.timestamp.includes('-->')) {
+      const parts = sub.timestamp.split('-->')
+      const end = parseSrtTimestamp(parts[1].trim())
+      duration = end - start
+    }
+    if (currentTime.value >= start && currentTime.value <= start + duration) {
+      return sub.testo || ''
+    }
+  }
+  return ''
 })
 
 const scrollSidebarToActive = () => {
@@ -174,7 +230,8 @@ const isSubtitleActive = (index) => {
 
 const checkSubtitleEnd = () => {
   if (selectedSubtitleIndex.value >= 0 && isPlayingSelectedSubtitle.value) {
-    const sub = tranSubtitles.value[selectedSubtitleIndex.value]
+    const arr = sidebarSubtitles.value
+    const sub = arr[selectedSubtitleIndex.value]
     if (!sub) return
     
     const startTime = parseSrtTimestamp(sub.timestamp)
@@ -190,9 +247,10 @@ const checkSubtitleEnd = () => {
 }
 
 const handleSidebarDoubleClick = (index) => {
-  if (!videoPlayer.value || !tranSubtitles.value[index]) return
+  const arr = sidebarSubtitles.value
+  if (!videoPlayer.value || !arr[index]) return
   
-  const sub = tranSubtitles.value[index]
+  const sub = arr[index]
   const startTime = parseSrtTimestamp(sub.timestamp)
   
   videoPlayer.value.currentTime = startTime
@@ -206,7 +264,7 @@ const handleSubtitleSelect = (index) => {
   selectedSubtitleIndex.value = index
   isPlayingSelectedSubtitle.value = false
   
-  if (subtitlesScroll.value && tranSubtitles.value[index]) {
+  if (subtitlesScroll.value && sidebarSubtitles.value[index]) {
     nextTick(() => {
       const container = subtitlesScroll.value
       const blocks = container.querySelectorAll('.subtitle-block')
@@ -254,8 +312,10 @@ const setupVideoSync = () => {
 }
 
 const deleteSubtitle = (index) => {
-  tranSubtitles.value.splice(index, 1)
-  localStorage.setItem('tranSubtitles', JSON.stringify(tranSubtitles.value))
+  saveUndoSnapshot()
+  const targetArray = activeSidebarTrack.value === 'tran' ? tranSubtitles : subtitles
+  targetArray.value.splice(index, 1)
+  localStorage.setItem(activeSidebarTrack.value === 'tran' ? 'tranSubtitles' : 'subtitles', JSON.stringify(targetArray.value))
 
   if (selectedSubtitleIndex.value === index) {
     selectedSubtitleIndex.value = -1
@@ -266,9 +326,10 @@ const deleteSubtitle = (index) => {
 
 const openEditModal = (index) => {
   editingIndex.value = index
+  const arr = sidebarSubtitles.value
   editForm.value = {
-    timestamp: tranSubtitles.value[index].timestamp,
-    testo: tranSubtitles.value[index].testo
+    timestamp: arr[index].timestamp,
+    testo: arr[index].testo
   }
   showModal.value = true
   
@@ -285,25 +346,52 @@ const closeModal = () => {
 
 const saveEdit = () => {
   if (editingIndex.value >= 0) {
-    tranSubtitles.value[editingIndex.value] = {
+    saveUndoSnapshot()
+    const targetArray = activeSidebarTrack.value === 'tran' ? tranSubtitles : subtitles
+    targetArray.value[editingIndex.value] = {
       timestamp: editForm.value.timestamp,
       testo: editForm.value.testo
     }
     
-    tranSubtitles.value.sort((a, b) => {
+    targetArray.value.sort((a, b) => {
       const timeA = parseSrtTimestamp(a.timestamp)
       const timeB = parseSrtTimestamp(b.timestamp)
       return timeA - timeB
     })
     
-    localStorage.setItem('tranSubtitles', JSON.stringify(tranSubtitles.value))
-    
+    localStorage.setItem(activeSidebarTrack.value === 'tran' ? 'tranSubtitles' : 'subtitles', JSON.stringify(targetArray.value))
     closeModal()
   }
 }
 
+const handleKeydown = (e) => {
+  if ((e.ctrlKey || e.metaKey) && e.key === 'z') {
+    e.preventDefault()
+    undo()
+  }
+}
+
+// --- Save button logic ---
+const isLoggedIn = () => {
+  return !!localStorage.getItem('authToken') // adatta al tuo sistema auth
+}
+
+const handleSave = () => {
+  if (!isLoggedIn()) {
+    router.push('/login')
+    return
+  }
+  // TODO: logica di salvataggio
+}
+// -------------------------
+
 watch(currentTime, () => {
   scrollSidebarToActive()
+})
+
+// Reset selected index when switching tracks
+watch(activeSidebarTrack, () => {
+  selectedSubtitleIndex.value = -1
 })
 
 onMounted(() => {
@@ -325,10 +413,13 @@ onMounted(() => {
   nextTick(() => {
     setupVideoSync()
   })
+
+  window.addEventListener('keydown', handleKeydown)
 })
 
 onUnmounted(() => {
   if (videoUrl.value) URL.revokeObjectURL(videoUrl.value)
+  window.removeEventListener('keydown', handleKeydown)
 })
 
 const restartVideo = () => {
@@ -370,52 +461,67 @@ watch(videoPlayer, (newPlayer) => {
     <header class="header fixed-top p-3 d-flex justify-content-between align-items-center">
       <h3 class="mb-0">Sensei</h3>
       <nav class="nav">
-        <a href="/home" class="nav-link text-white-50 fw-bold">Home</a>
-        <a href="/signin" class="nav-link text-white-50 fw-bold">Sign in</a>
+        <button class="btn-save" @click="handleSave">
+          <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" fill="currentColor" viewBox="0 0 16 16">
+            <path d="M2 1a1 1 0 0 0-1 1v12a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V2a1 1 0 0 0-1-1H9.5a1 1 0 0 0-1 1v7.293l2.646-2.647a.5.5 0 0 1 .708.708l-3.5 3.5a.5.5 0 0 1-.708 0l-3.5-3.5a.5.5 0 1 1 .708-.708L7.5 9.293V2a2 2 0 0 1 2-2H14a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2V2a2 2 0 0 1 2-2h2.5a.5.5 0 0 1 0 1z"/>
+          </svg>
+          Save
+        </button>
       </nav>
     </header>
 
     <div class="container">
       <div class="content">
         <div class="sidebar">
-            <div class="subtitles-scroll" ref="subtitlesScroll">
-              <template v-for="(subtitle, index) in tranSubtitles" :key="index">
-                <!-- Blocco sottotitolo -->
-                <div 
-                  class="subtitle-block"
-                  :class="{ 'subtitle-block-active': isSubtitleActive(index) }"
-                  @dblclick="handleSidebarDoubleClick(index)"
-                >
-                  <span class="timestamp">{{ subtitle.timestamp }}</span>
-                  <p class="testo">{{ subtitle.testo }}</p>
-                  <div class="block-actions">
-                    <button class="btn-delete" @click.stop="deleteSubtitle(index)" title="Elimina sottotitolo">Delete</button>
-                    <button class="btn-edit" @click.stop="openEditModal(index)">Edit</button>
-                  </div>
-                </div>
+          <!-- Track indicator badge -->
+          <div class="sidebar-track-badge" :class="activeSidebarTrack === 'tran' ? 'badge-tran' : 'badge-orig'">
+            <svg v-if="activeSidebarTrack === 'tran'" xmlns="http://www.w3.org/2000/svg" width="13" height="13" fill="currentColor" viewBox="0 0 16 16">
+              <path d="M16 8s-3-5.5-8-5.5S0 8 0 8s3 5.5 8 5.5S16 8 16 8M1.173 8a13 13 0 0 1 1.66-2.043C4.12 4.668 5.88 3.5 8 3.5s3.879 1.168 5.168 2.457A13 13 0 0 1 14.828 8q-.086.13-.195.288c-.335.48-.83 1.12-1.465 1.755C11.879 11.332 10.119 12.5 8 12.5s-3.879-1.168-5.168-2.457A13 13 0 0 1 1.172 8z"/>
+              <path d="M8 5.5a2.5 2.5 0 1 0 0 5 2.5 2.5 0 0 0 0-5M4.5 8a3.5 3.5 0 1 1 7 0 3.5 3.5 0 0 1-7 0"/>
+            </svg>
+            <svg v-else xmlns="http://www.w3.org/2000/svg" width="13" height="13" fill="currentColor" viewBox="0 0 16 16">
+              <path d="M16 8s-3-5.5-8-5.5S0 8 0 8s3 5.5 8 5.5S16 8 16 8M1.173 8a13 13 0 0 1 1.66-2.043C4.12 4.668 5.88 3.5 8 3.5s3.879 1.168 5.168 2.457A13 13 0 0 1 14.828 8q-.086.13-.195.288c-.335.48-.83 1.12-1.465 1.755C11.879 11.332 10.119 12.5 8 12.5s-3.879-1.168-5.168-2.457A13 13 0 0 1 1.172 8z"/>
+              <path d="M8 5.5a2.5 2.5 0 1 0 0 5 2.5 2.5 0 0 0 0-5M4.5 8a3.5 3.5 0 1 1 7 0 3.5 3.5 0 0 1-7 0"/>
+            </svg>
+            {{ activeSidebarTrack === 'tran' ? 'Track 1 · Translation' : 'Track 2 · Original' }}
+          </div>
 
-                <!-- Separatore con pulsanti Add e Merge -->
-                <div
-                  v-if="index < tranSubtitles.length - 1"
-                  class="subtitle-separator"
-                >
-                  <div class="separator-line"></div>
-                  <div class="separator-actions">
-                    <button
-                      class="btn-sep btn-add"
-                      title="Aggiungi sottotitolo vuoto qui"
-                      @click.stop="addSubtitleBetween(index)"
-                    >+ add</button>
-                    <button
-                      class="btn-sep btn-merge"
-                      title="Unisci i due sottotitoli"
-                      @click.stop="mergeSubtitles(index)"
-                    >⊕ merge</button>
-                  </div>
-                  <div class="separator-line"></div>
+          <div class="subtitles-scroll" ref="subtitlesScroll">
+            <template v-for="(subtitle, index) in sidebarSubtitles" :key="index">
+              <div 
+                class="subtitle-block"
+                :class="{ 'subtitle-block-active': isSubtitleActive(index) }"
+                @dblclick="handleSidebarDoubleClick(index)"
+              >
+                <span class="timestamp">{{ subtitle.timestamp }}</span>
+                <p class="testo">{{ subtitle.testo }}</p>
+                <div class="block-actions">
+                  <button class="btn-delete" @click.stop="deleteSubtitle(index)" title="Elimina sottotitolo">Delete</button>
+                  <button class="btn-edit" @click.stop="openEditModal(index)">Edit</button>
                 </div>
-              </template>
-            </div>
+              </div>
+
+              <div
+                v-if="index < sidebarSubtitles.length - 1"
+                class="subtitle-separator"
+              >
+                <div class="separator-line"></div>
+                <div class="separator-actions">
+                  <button
+                    class="btn-sep btn-add"
+                    title="Aggiungi sottotitolo vuoto qui"
+                    @click.stop="addSubtitleBetween(index)"
+                  >+ add</button>
+                  <button
+                    class="btn-sep btn-merge"
+                    title="Unisci i due sottotitoli"
+                    @click.stop="mergeSubtitles(index)"
+                  >⊕ merge</button>
+                </div>
+                <div class="separator-line"></div>
+              </div>
+            </template>
+          </div>
         </div>
 
         <div class="video-area">
@@ -443,6 +549,10 @@ watch(videoPlayer, (newPlayer) => {
               <svg @click="zoomIn" xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="currentColor" class="bi bi-zoom-in" viewBox="0 0 16 16">
                 <path fill-rule="evenodd" d="M6.5 12a5.5 5.5 0 1 0 0-11 5.5 5.5 0 0 0 0 11M13 6.5a6.5 6.5 0 1 1-13 0 6.5 6.5 0 0 1 13 0"/><path d="M10.344 11.742q.044.06.098.115l3.85 3.85a1 1 0 0 0 1.415-1.414l-3.85-3.85a1 1 0 0 0-.115-.1 6.5 6.5 0 0 1-1.398 1.4z"/><path fill-rule="evenodd" d="M6.5 3a.5.5 0 0 1 .5.5V6h2.5a.5.5 0 0 1 0 1H7v2.5a.5.5 0 0 1-1 0V7H3.5a.5.5 0 0 1 0-1H6V3.5a.5.5 0 0 1 .5-.5"/>
               </svg>
+          <svg @click="undo" xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="currentColor" viewBox="0 0 16 16">
+            <path fill-rule="evenodd" d="M8 3a5 5 0 1 1-4.546 2.914.5.5 0 0 0-.908-.417A6 6 0 1 0 8 2z"/>
+            <path d="M8 4.466V.534a.25.25 0 0 0-.41-.192L5.23 2.308a.25.25 0 0 0 0 .384l2.36 1.966A.25.25 0 0 0 8 4.466"/>
+          </svg>
           </div>
           <div class="track">
             <subTimeline 
@@ -452,10 +562,10 @@ watch(videoPlayer, (newPlayer) => {
               v-model:subtitles="subtitles"
               v-model:tranSubtitles="tranSubtitles"
               v-model:pixelsPerSecond="pixelsPerSecond"
+              @update:activeTrack="activeSidebarTrack = $event"
             />
           </div>
         </div>
-
       </div>
     </div>
 
@@ -520,14 +630,33 @@ h3 {
   display: flex; 
   gap: 1rem; 
 }
-.nav a { 
-  color: rgba(255, 255, 255, 0.5); 
-  font-weight: bold; 
-  text-decoration: none; 
-  border-bottom: 0.25rem solid transparent; 
-  padding-bottom: 0.25rem; 
-  transition: all 0.2s ease; 
+
+.btn-save {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 18px;
+  background: rgba(18, 83, 163, 0.85);
+  color: #fff;
+  border: none;
+  border-radius: 5px;
+  font-weight: 700;
+  font-size: 0.9rem;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  letter-spacing: 0.03em;
 }
+
+.btn-save:hover {
+  background: rgba(18, 83, 163, 1);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 10px rgba(18, 83, 163, 0.4);
+}
+
+.btn-save:active {
+  transform: translateY(0);
+}
+
 .container { 
   grid-area: container; 
   display: grid; 
@@ -549,9 +678,33 @@ h3 {
   display: flex; 
   flex-direction: column; 
   overflow: hidden; 
-  padding-bottom: 30vh; 
   height: 100%; 
 }
+
+/* Track badge at top of sidebar */
+.sidebar-track-badge {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  flex-shrink: 0;
+  border-bottom: 1px solid rgba(255,255,255,0.06);
+}
+
+.badge-tran {
+  color: rgba(18, 83, 163, 0.918);
+  background: rgba(18, 83, 163, 0.12);
+}
+
+.badge-orig {
+  color: #00cc99;
+  background: rgba(0, 170, 140, 0.12);
+}
+
 .subtitles-scroll { 
   flex: 1; 
   overflow-y: auto; 
@@ -561,17 +714,21 @@ h3 {
   scroll-behavior: smooth;
 }
 
-/* ── Blocco sottotitolo ── */
 .subtitle-block { 
   display: flex;
   flex-direction: column;
-  padding: 1px ;
+  padding: 0.3px;
   margin-bottom: 0;
   background: #2a2d31; 
   border-left: 4px solid rgba(18, 83, 163, 0.918); 
   border-radius: 4px;
   transition: all 0.3s ease;
   cursor: pointer;
+}
+
+/* When showing Track 2 (orig), use teal accent */
+.badge-orig ~ .subtitles-scroll .subtitle-block {
+  border-left-color: #00aa8c;
 }
 
 .subtitle-block:hover {
@@ -605,7 +762,6 @@ h3 {
   word-break: break-word;
 }
 
-/* ── Riga bottoni in fondo al blocco ── */
 .block-actions {
   display: flex;
   justify-content: flex-end;
@@ -658,7 +814,6 @@ h3 {
   color: #fff;
 }
 
-/* ── Separatore con pulsanti Add / Merge ── */
 .subtitle-separator {
   display: flex;
   align-items: center;
@@ -721,23 +876,36 @@ h3 {
   box-shadow: 0 2px 6px rgba(137, 41, 234, 0.4);
 }
 
-/* ── Video area ── */
 .video-area { 
   background-color: rgb(33, 32, 32); 
-  display: grid; 
-  place-items: center; 
-  padding-bottom: 30vh; 
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  overflow: hidden;  
 }
+
 .video-box { 
   width: 90%;
+  height: 90%;       
+  max-height: 90%;
   position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
 }
+
 .video-box video { 
-  width: 100%; 
-  height: auto; 
+  width: 100%;
+  height: 100%;
+  max-width: 100%;
+  max-height: 100%;
   display: block; 
   object-fit: contain; 
 }
+
 .subtitle-overlay {
   position: absolute;
   bottom: 35px;
@@ -766,13 +934,11 @@ h3 {
   overflow-x: auto; 
   overflow-y: hidden; 
   z-index: 1; 
-  transform: translateY(30px); 
 }
 .zoomIcons { 
   cursor: pointer; 
 }
 
-/* ── Modale ── */
 .modal-overlay {
   position: fixed;
   top: 0;

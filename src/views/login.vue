@@ -102,7 +102,6 @@ const handleLogin = async () => {
 </template>
 
 <style scoped>
-/* Variabili colori basate sullo screenshot */
 :root {
   --bg-dark: #111418;
   --card-bg: #1a1d23;
@@ -113,7 +112,7 @@ const handleLogin = async () => {
 
 .sensei-wrapper {
   min-height: 100vh;
-  background-color: #111418; /* Sfondo quasi nero */
+  background-color: #111418; 
   color: #ffffff;
   font-family: 'Inter', system-ui, -apple-system, sans-serif;
   display: flex;
@@ -144,9 +143,8 @@ const handleLogin = async () => {
   padding: 20px;
 }
 
-/* Card centrale */
 .auth-card {
-  background-color: #1a1d23; /* Grigio scuro della card */
+  background-color: #1a1d23; 
   width: 100%;
   max-width: 440px;
   padding: 48px 40px;
@@ -170,7 +168,6 @@ const handleLogin = async () => {
   font-size: 14px;
 }
 
-/* Form e Input */
 .auth-form {
   display: flex;
   flex-direction: column;
@@ -193,7 +190,7 @@ const handleLogin = async () => {
   padding: 12px 16px;
   border-radius: 8px;
   border: 1px solid #2d3748;
-  background-color: #ffffff; /* Sfondo bianco come in foto */
+  background-color: #ffffff; 
   color: #1a1d23;
   font-size: 15px;
   box-sizing: border-box;
@@ -205,14 +202,13 @@ const handleLogin = async () => {
   border-color: #3b82f6;
 }
 
-/* Bottone Blu */
 .btn-submit {
   width: 100%;
   padding: 14px;
-  background-color: #3b82f6; /* Blu vivido */
+  background-color: #3b82f6; 
   color: white;
   border: none;
-  border-radius: 25px; /* Arrotondato come nell'immagine */
+  border-radius: 25px; 
   font-size: 16px;
   font-weight: 600;
   cursor: pointer;
@@ -229,7 +225,6 @@ const handleLogin = async () => {
   cursor: not-allowed;
 }
 
-/* Footer della card */
 .auth-footer {
   margin-top: 24px;
   text-align: center;

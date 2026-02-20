@@ -13,7 +13,7 @@ const props = defineProps({
   }
 })
 
-const emit = defineEmits(['update:subtitles', 'update:tranSubtitles'])
+const emit = defineEmits(['update:subtitles', 'update:tranSubtitles', 'update:activeTrack'])
 
 const timelineWrapper = ref(null)
 const currentTime = ref(0)
@@ -29,10 +29,19 @@ const dragStartTime = ref(0)
 const dragStartDuration = ref(0)
 const subtitleType = ref(null)
 const isClick = ref(true)
+const snapshotSaved = ref(false)
 
-const MIN_SUBTITLE_DURATION = 0.2 // 200ms in secondi
+const activeSidebarTrack = ref('tran')
+
+const MIN_SUBTITLE_DURATION = 0.2
 
 const onSubtitleSelect = inject('onSubtitleSelect', null)
+const saveUndoSnapshot = inject('saveUndoSnapshot', null)
+
+const toggleSidebarTrack = (track) => {
+  activeSidebarTrack.value = track
+  emit('update:activeTrack', track)
+}
 
 const getVideoSrc = () => {
   if (!props.videoRef) return ''
@@ -52,7 +61,6 @@ const parseSrtTimestamp = (timestampStr) => {
   if (!timestampStr) return 0
   const startTime = timestampStr.split('-->')[0].trim().replace(',', '.')
   const parts = startTime.split(':').map(Number)
-  
   if (parts.length === 3) {
     return (parts[0] * 3600) + (parts[1] * 60) + parts[2]
   }
@@ -73,7 +81,6 @@ const formatTimestampToSrt = (startTime, duration) => {
     const ms = Math.floor((seconds % 1) * 1000)
     return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')},${ms.toString().padStart(3, '0')}`
   }
-  
   const endTime = startTime + duration
   return `${formatSrtTime(startTime)} --> ${formatSrtTime(endTime)}`
 }
@@ -82,10 +89,8 @@ const updateSubtitleTimestamp = (subId, newStart, newDuration, type) => {
   const isTran = type === 'tran'
   const updatedSubs = isTran ? [...props.tranSubtitles] : [...props.subtitles]
   const subToUpdate = updatedSubs[subId]
-  
   if (subToUpdate) {
     subToUpdate.timestamp = formatTimestampToSrt(newStart, newDuration)
-    
     if (isTran) {
       emit('update:tranSubtitles', updatedSubs)
     } else {
@@ -96,11 +101,9 @@ const updateSubtitleTimestamp = (subId, newStart, newDuration, type) => {
 
 const processedSubtitles = computed(() => {
   if (!props.subtitles || props.subtitles.length === 0) return []
-  
   return props.subtitles.map((sub, index) => {
     const start = parseSrtTimestamp(sub.timestamp)
     const duration = parseSrtDuration(sub.timestamp)
-    
     return {
       id: index,
       start, 
@@ -113,11 +116,9 @@ const processedSubtitles = computed(() => {
 
 const processedTranSubtitles = computed(() => {
   if (!props.tranSubtitles || props.tranSubtitles.length === 0) return []
-  
   return props.tranSubtitles.map((sub, index) => {
     const start = parseSrtTimestamp(sub.timestamp)
     const duration = parseSrtDuration(sub.timestamp)
-    
     return {
       id: index,
       start, 
@@ -135,12 +136,10 @@ const isSubtitleActive = (sub) => {
 
 const handleSubtitleClick = (sub, type) => {
   if (!isClick.value) return
-  
-  if (type === 'tran' && props.videoRef) {
+  if (props.videoRef) {
     const videoElement = props.videoRef.value || props.videoRef
     videoElement.currentTime = sub.start
     videoElement.pause()
-    
     if (onSubtitleSelect) {
       onSubtitleSelect(sub.id)
     }
@@ -156,17 +155,21 @@ const updateProgress = () => {
 
 watch(currentTime, (newVal) => {
   if (!timelineWrapper.value) return
-  
   const container = timelineWrapper.value
   const playheadPosition = newVal * props.pixelsPerSecond
-  
-  const offset = 200
-  const targetScroll = Math.max(0, playheadPosition - offset)
-  
-  container.scrollTo({
-    left: targetScroll,
-    behavior: 'smooth'
-  })
+
+  const PAGE_WIDTH = 1150   
+  const SCROLL_STEP = 1140  
+
+  const pageIndex = Math.floor(playheadPosition / PAGE_WIDTH)
+  const targetScroll = pageIndex * SCROLL_STEP
+
+  if (container.scrollLeft !== targetScroll) {
+    container.scrollTo({
+      left: targetScroll,
+      behavior: 'smooth'
+    })
+  }
 })
 
 watch(() => props.pixelsPerSecond, () => {
@@ -203,10 +206,9 @@ const formatTime = (seconds) => {
 const handleSubtitleMouseDown = (event, sub, edge = null, type = null) => {
   event.preventDefault()
   event.stopPropagation()
-  
   isClick.value = true
   subtitleType.value = type
-  
+  snapshotSaved.value = false
   if (edge && edge !== 'tran' && edge !== 'orig') {
     resizingSubtitle.value = sub
     resizeEdge.value = edge
@@ -215,10 +217,8 @@ const handleSubtitleMouseDown = (event, sub, edge = null, type = null) => {
     draggingSubtitle.value = sub
     dragStartDuration.value = sub.duration
   }
-  
   dragStartX.value = event.clientX
   dragStartTime.value = sub.start
-  
   document.body.style.cursor = (edge && edge !== 'tran' && edge !== 'orig') ? 'ew-resize' : 'grabbing'
   document.body.style.userSelect = 'none'
 }
@@ -248,6 +248,10 @@ const handleMouseMove = (event) => {
   const deltaTime = deltaX / props.pixelsPerSecond
 
   if (draggingSubtitle.value) {
+    if (!snapshotSaved.value && Math.abs(deltaX) > 2) {
+      if (saveUndoSnapshot) saveUndoSnapshot()
+      snapshotSaved.value = true
+    }
     isClick.value = false
     const subId = draggingSubtitle.value.id
     const duration = dragStartDuration.value
@@ -256,27 +260,23 @@ const handleMouseMove = (event) => {
 
     currentData.forEach((s) => {
       if (s.id === subId) return
-      // Verso destra: sovrascrive fino a 200ms del vicino
       if (dragStartTime.value + duration <= s.start + 0.001) {
         const minPossibleStartOfNext = s.start + s.duration - MIN_SUBTITLE_DURATION
-        const wall = Math.min(s.start, minPossibleStartOfNext)
         if (newEnd > s.start) {
           newEnd = Math.min(newEnd, minPossibleStartOfNext)
           newStart = newEnd - duration
           if (newEnd > s.start) {
-             currentList[s.id].timestamp = formatTimestampToSrt(newEnd, (s.start + s.duration) - newEnd)
+            currentList[s.id].timestamp = formatTimestampToSrt(newEnd, (s.start + s.duration) - newEnd)
           }
         }
       }
-      // Verso sinistra: sovrascrive fino a 200ms del vicino
       if (dragStartTime.value >= s.start + s.duration - 0.001) {
         const maxPossibleEndOfPrev = s.start + MIN_SUBTITLE_DURATION
-        const wall = Math.max(s.start + s.duration, maxPossibleEndOfPrev)
         if (newStart < s.start + s.duration) {
           newStart = Math.max(newStart, maxPossibleEndOfPrev)
           newEnd = newStart + duration
           if (newStart < s.start + s.duration) {
-             currentList[s.id].timestamp = formatTimestampToSrt(s.start, newStart - s.start)
+            currentList[s.id].timestamp = formatTimestampToSrt(s.start, newStart - s.start)
           }
         }
       }
@@ -288,6 +288,10 @@ const handleMouseMove = (event) => {
   }
 
   if (resizingSubtitle.value) {
+    if (!snapshotSaved.value && Math.abs(deltaX) > 2) {
+      if (saveUndoSnapshot) saveUndoSnapshot()
+      snapshotSaved.value = true
+    }
     isClick.value = false
     const subId = resizingSubtitle.value.id
     if (resizeEdge.value === 'right') {
@@ -329,6 +333,7 @@ const handleMouseUp = () => {
     resizingSubtitle.value = null
     resizeEdge.value = null
     subtitleType.value = null
+    snapshotSaved.value = false
     document.body.style.cursor = ''
     document.body.style.userSelect = ''
   }
@@ -368,9 +373,50 @@ onUnmounted(() => {
 <template>
   <div class="container">
     <div class="left">
-      <div class="waveform">Waveform</div>
-      <div class="track">Track 1</div>
-      <div class="track">Track 2</div>
+      <div class="waveform-label">Waveform</div>
+
+      <div class="track-label">
+        <span>Track 1</span>
+        <button
+          class="eye-btn"
+          :class="{ 'eye-btn-active': activeSidebarTrack === 'tran' }"
+          :title="activeSidebarTrack === 'tran' ? 'Showing Track 1 in sidebar' : 'Show Track 1 in sidebar'"
+          @click="toggleSidebarTrack('tran')"
+        >
+          <svg v-if="activeSidebarTrack === 'tran'" xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 16 16">
+            <path d="M16 8s-3-5.5-8-5.5S0 8 0 8s3 5.5 8 5.5S16 8 16 8M1.173 8a13 13 0 0 1 1.66-2.043C4.12 4.668 5.88 3.5 8 3.5s3.879 1.168 5.168 2.457A13 13 0 0 1 14.828 8q-.086.13-.195.288c-.335.48-.83 1.12-1.465 1.755C11.879 11.332 10.119 12.5 8 12.5s-3.879-1.168-5.168-2.457A13 13 0 0 1 1.172 8z"/>
+            <path d="M8 5.5a2.5 2.5 0 1 0 0 5 2.5 2.5 0 0 0 0-5M4.5 8a3.5 3.5 0 1 1 7 0 3.5 3.5 0 0 1-7 0"/>
+          </svg>
+          <svg v-else xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 16 16">
+            <path d="M13.359 11.238C15.06 9.72 16 8 16 8s-3-5.5-8-5.5a7 7 0 0 0-2.79.588l.77.771A6 6 0 0 1 8 3.5c2.12 0 3.879 1.168 5.168 2.457A13 13 0 0 1 14.828 8q-.086.13-.195.288c-.335.48-.83 1.12-1.465 1.755q-.247.248-.517.486z"/>
+            <path d="M11.297 9.176a3.5 3.5 0 0 0-4.474-4.474l.823.823a2.5 2.5 0 0 1 2.829 2.829zm-2.943 1.299.822.822a3.5 3.5 0 0 1-4.474-4.474l.823.823a2.5 2.5 0 0 0 2.829 2.829"/>
+            <path d="M3.35 5.47q-.27.238-.518.487A13 13 0 0 0 1.172 8l.195.288c.335.48.83 1.12 1.465 1.755C4.121 11.332 5.881 12.5 8 12.5c.716 0 1.39-.133 2.02-.36l.77.772A7 7 0 0 1 8 13.5C3 13.5 0 8 0 8s.939-1.721 2.641-3.238l.708.709zm10.296 8.884-12-12 .708-.708 12 12z"/>
+          </svg>
+        </button>
+      </div>
+
+    
+      <div class="track-label">
+        <span>Track 2</span>
+        <button
+          class="eye-btn"
+          :class="{ 'eye-btn-active': activeSidebarTrack === 'orig' }"
+          :title="activeSidebarTrack === 'orig' ? 'Showing Track 2 in sidebar' : 'Show Track 2 in sidebar'"
+          @click="toggleSidebarTrack('orig')"
+        >
+    
+          <svg v-if="activeSidebarTrack === 'orig'" xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 16 16">
+            <path d="M16 8s-3-5.5-8-5.5S0 8 0 8s3 5.5 8 5.5S16 8 16 8M1.173 8a13 13 0 0 1 1.66-2.043C4.12 4.668 5.88 3.5 8 3.5s3.879 1.168 5.168 2.457A13 13 0 0 1 14.828 8q-.086.13-.195.288c-.335.48-.83 1.12-1.465 1.755C11.879 11.332 10.119 12.5 8 12.5s-3.879-1.168-5.168-2.457A13 13 0 0 1 1.172 8z"/>
+            <path d="M8 5.5a2.5 2.5 0 1 0 0 5 2.5 2.5 0 0 0 0-5M4.5 8a3.5 3.5 0 1 1 7 0 3.5 3.5 0 0 1-7 0"/>
+          </svg>
+      
+          <svg v-else xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 16 16">
+            <path d="M13.359 11.238C15.06 9.72 16 8 16 8s-3-5.5-8-5.5a7 7 0 0 0-2.79.588l.77.771A6 6 0 0 1 8 3.5c2.12 0 3.879 1.168 5.168 2.457A13 13 0 0 1 14.828 8q-.086.13-.195.288c-.335.48-.83 1.12-1.465 1.755q-.247.248-.517.486z"/>
+            <path d="M11.297 9.176a3.5 3.5 0 0 0-4.474-4.474l.823.823a2.5 2.5 0 0 1 2.829 2.829zm-2.943 1.299.822.822a3.5 3.5 0 0 1-4.474-4.474l.823.823a2.5 2.5 0 0 0 2.829 2.829"/>
+            <path d="M3.35 5.47q-.27.238-.518.487A13 13 0 0 0 1.172 8l.195.288c.335.48.83 1.12 1.465 1.755C4.121 11.332 5.881 12.5 8 12.5c.716 0 1.39-.133 2.02-.36l.77.772A7 7 0 0 1 8 13.5C3 13.5 0 8 0 8s.939-1.721 2.641-3.238l.708.709zm10.296 8.884-12-12 .708-.708 12 12z"/>
+          </svg>
+        </button>
+      </div>
     </div>
 
     <div class="timeline-wrapper" ref="timelineWrapper">
@@ -422,13 +468,15 @@ onUnmounted(() => {
           </div>
         </div>
 
+ 
         <div 
           v-for="sub in processedTranSubtitles" 
           :key="'tran-' + sub.id"
-          class="sub-block"
+          class="sub-block sub-block-tran"
           :class="{ 
             'sub-block-active': isSubtitleActive(sub),
-            'sub-block-dragging': draggingSubtitle?.id === sub.id || resizingSubtitle?.id === sub.id
+            'sub-block-dragging': draggingSubtitle?.id === sub.id || resizingSubtitle?.id === sub.id,
+            'sub-block-sidebar-active': activeSidebarTrack === 'tran'
           }"
           :style="{ 
             position: 'absolute',
@@ -455,9 +503,10 @@ onUnmounted(() => {
         <div 
           v-for="sub in processedSubtitles" 
           :key="'orig-' + sub.id"
-          class="sub-block"
+          class="sub-block sub-block-orig"
           :class="{ 
-            'sub-block-dragging': draggingSubtitle?.id === sub.id || resizingSubtitle?.id === sub.id
+            'sub-block-dragging': draggingSubtitle?.id === sub.id || resizingSubtitle?.id === sub.id,
+            'sub-block-sidebar-active': activeSidebarTrack === 'orig'
           }"
           :style="{ 
             position: 'absolute',
@@ -467,6 +516,7 @@ onUnmounted(() => {
             transform: `translateX(${sub.start * pixelsPerSecond}px)` 
           }"
           :title="sub.originalTimestamp"
+          @click="handleSubtitleClick(sub, 'orig')"
           @mousedown="(e) => handleSubtitleMouseDown(e, sub, null, 'orig')"
         >
           <div 
@@ -497,6 +547,53 @@ onUnmounted(() => {
   display: grid;
   grid-template-rows: 60px 60px 60px;
   align-items: center;
+}
+
+.waveform-label {
+  font-size: 11px;
+  color: #888;
+  padding-left: 6px;
+}
+
+.track-label {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 6px;
+  font-size: 11px;
+  color: #888;
+}
+
+.track-label span {
+  flex: 1;
+}
+
+.eye-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: none;
+  border: none;
+  padding: 3px;
+  border-radius: 4px;
+  cursor: pointer;
+  color: #555;
+  transition: all 0.2s ease;
+  flex-shrink: 0;
+}
+
+.eye-btn:hover {
+  color: #aaa;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.eye-btn-active {
+  color: rgba(18, 83, 163, 0.918) !important;
+}
+
+.eye-btn-active:hover {
+  color: rgba(18, 83, 163, 1) !important;
+  background: rgba(18, 83, 163, 0.15) !important;
 }
 
 .timeline-wrapper {
@@ -604,8 +701,6 @@ onUnmounted(() => {
 
 .sub-block {
   height: 40px;
-  background: rgba(0, 120, 215, 0.5);
-  border: 1px solid #0078d7;
   border-radius: 4px;
   padding: 4px 8px;
   overflow: hidden;
@@ -616,9 +711,33 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   box-sizing: border-box;
-  transition: all 0.2s ease;
+  transition: background 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
   position: relative;
   user-select: none;
+}
+
+.sub-block-tran {
+  background: rgba(0, 120, 215, 0.5);
+  border: 1px solid #0078d7;
+}
+
+.sub-block-tran:hover {
+  background: rgba(0, 120, 215, 0.8);
+}
+
+
+.sub-block-orig {
+  background: rgba(0, 170, 140, 0.45);
+  border: 1px solid #00aa8c;
+}
+
+.sub-block-orig:hover {
+  background: rgba(0, 170, 140, 0.75);
+}
+
+.sub-block-sidebar-active {
+  border-width: 2px;
+  filter: brightness(1.15);
 }
 
 .sub-block-dragging {
@@ -628,7 +747,7 @@ onUnmounted(() => {
 }
 
 .sub-block-active {
-  border-color: #8025f7;
+  border-color: #8025f7 !important;
   box-shadow: 0 0 10px rgba(137, 41, 234, 0.6);
   z-index: 10;
 }
@@ -640,10 +759,6 @@ onUnmounted(() => {
   overflow: hidden;
   flex: 1;
   pointer-events: none;
-}
-
-.sub-block:hover {
-  background: rgba(0, 120, 215, 0.8);
 }
 
 .resize-handle {
