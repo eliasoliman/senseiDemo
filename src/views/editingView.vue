@@ -755,7 +755,7 @@ h3 {
 }
 
 .testo { 
-  margin: 0 0 6px 0;
+  margin: 0 0 6px 5px;
   color: #fff; 
   line-height: 1.4; 
   font-size: 0.9rem;

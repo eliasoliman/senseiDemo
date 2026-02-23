@@ -24,12 +24,24 @@ const handleLogin = async () => {
 
     const token = response.data.access_token;
     localStorage.setItem('subtitles_token', token);
-    router.push('/myprojects');
+
+    // ─── Segna l'utente come loggato ────────────────────────────────────────
+    localStorage.setItem('isLogged', 'true');
+
+    // ─── Gestisci redirect post-login ───────────────────────────────────────
+    // Home.vue salva 'redirectAfterLogin' quando Workspace viene cliccato da non loggato
+    const redirect = localStorage.getItem('redirectAfterLogin');
+    if (redirect) {
+      localStorage.removeItem('redirectAfterLogin');
+      router.push(redirect);
+    } else {
+      router.push('/myprojects');
+    }
 
   } catch (err) {
     if (err.response) {
-      errorMsg.value = err.response.status === 401 
-        ? "Credenziali errate. Riprova." 
+      errorMsg.value = err.response.status === 401
+        ? "Credenziali errate. Riprova."
         : "Errore del server: " + (err.response.data.detail || "Riprova");
     } else {
       errorMsg.value = "Impossibile connettersi al server.";
@@ -53,7 +65,6 @@ const handleLogin = async () => {
           Home
         </a>
       </nav>
-      
     </header>
 
     <main class="auth-container">

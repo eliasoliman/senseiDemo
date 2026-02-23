@@ -4,14 +4,6 @@
       <h1 class="mb-0">Sensei</h1>
       <nav class="nav">
         <a
-          href='/signup'
-          class="signup btn btn-lg text-light glass-btn" 
-          style="background: rgba(255, 255, 255, 0);border: 0;"
-        >
-           Sing up
-        </a>
-
-        <a
           href='/login'
           class="workspace btn btn-lg glass-btn" 
           style="background: rgba(255, 255, 255, 0.4); border: 1px solid rgba(255, 255, 255, 0.2); color: #009cc8;"

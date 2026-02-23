@@ -19,42 +19,49 @@
         <option value="it">Italian</option>
         <option value="fr">French</option>
       </select>
-      <button class="btn btn-lg btn-light fw-bold" @click="createProject">Create</button>
-
-       
+      <button class="btn btn-lg btn-light fw-bold" @click="handleCreate">Create</button>
     </div>
-      <div v-if="loading" class="loading-overlay">
-          <div class="progress-container">
-            <h2>Processing your video...</h2>
-            
-            <div class="progress-section">
-              <div class="progress-label">
-                <span>Transcribing</span>
-                <span class="progress-percent">{{ transcribingProgress }}%</span>
-              </div>
-              <div class="progress-bar-wrapper">
-                <div class="progress-bar" :style="{ width: transcribingProgress + '%' }"></div>
-              </div>
-            </div>
 
-            <div class="progress-section">
-              <div class="progress-label">
-                <span>Translating</span>
-                <span class="progress-percent">{{ translatingProgress }}%</span>
-              </div>
-              <div class="progress-bar-wrapper">
-                <div class="progress-bar" :style="{ width: translatingProgress + '%' }"></div>
-              </div>
-            </div>
+    <div v-if="loading" class="loading-overlay">
+      <div class="progress-container">
+        <h2>Processing your video...</h2>
+        
+        <div class="progress-section">
+          <div class="progress-label">
+            <span>Transcribing</span>
+            <span class="progress-percent">{{ transcribingProgress }}%</span>
           </div>
+          <div class="progress-bar-wrapper">
+            <div class="progress-bar" :style="{ width: transcribingProgress + '%' }"></div>
+          </div>
+        </div>
+
+        <div class="progress-section">
+          <div class="progress-label">
+            <span>Translating</span>
+            <span class="progress-percent">{{ translatingProgress }}%</span>
+          </div>
+          <div class="progress-bar-wrapper">
+            <div class="progress-bar" :style="{ width: translatingProgress + '%' }"></div>
+          </div>
+        </div>
       </div>
+    </div>
   </div>
 </template>
 
 <script setup>
-import { ref } from 'vue'
+import { ref, onMounted } from 'vue'
 import axios from 'axios'
 import { useRouter } from 'vue-router'
+
+// ─── Props ────────────────────────────────────────────────────────────────────
+const props = defineProps({
+  userId: {
+    type: Number,
+    required: true
+  }
+})
 
 const targetLanguage = ref('');
 const router = useRouter()
@@ -73,8 +80,48 @@ const apiConversionOut = 'https://api.matita.net/whisper/conversion-out'
 const apiConversionLang = 'https://api.matita.net/whisper/conversion-lang'
 const apiConversionTranslated = 'https://api.matita.net/whisper/conversion-translated'
 
-const tokenBearer= 'Bearer dkPJpR2DqOLPppgQn4oIGPcdQ7W_zgGYvOyf2HTJPxE'
+const tokenBearer = 'Bearer dkPJpR2DqOLPppgQn4oIGPcdQ7W_zgGYvOyf2HTJPxE'
 
+// ─── Axios instance per le admin API ─────────────────────────────────────────
+const API_BASE = 'https://api.matita.net/subtitles-admin'
+const apiAdmin = axios.create({ baseURL: API_BASE })
+apiAdmin.interceptors.request.use((config) => {
+  const token = localStorage.getItem('subtitles_token')
+  if (token) config.headers['Authorization'] = `Bearer ${token}`
+  return config
+})
+apiAdmin.interceptors.response.use(
+  (response) => {
+    const refreshed = response.headers['x-refresh-token']
+    if (refreshed) {
+      localStorage.setItem('subtitles_token', refreshed)
+    }
+    return response
+  },
+  (error) => Promise.reject(error)
+)
+
+// ─── Utility: array → SRT string ─────────────────────────────────────────────
+const arrayToSrt = (arr) => {
+  return arr.map((sub, i) => {
+    return `${i + 1}\n${sub.timestamp}\n${sub.testo}`
+  }).join('\n\n')
+}
+
+// ─── Auth helper ──────────────────────────────────────────────────────────────
+function isLogged() {
+  return localStorage.getItem('isLogged') === 'true'
+}
+
+onMounted(() => {
+  const pending = localStorage.getItem('pendingProject')
+  if (pending && isLogged()) {
+    const { savedProjectName, savedTargetLanguage } = JSON.parse(pending)
+    projectName.value = savedProjectName || ''
+    targetLanguage.value = savedTargetLanguage || ''
+    localStorage.removeItem('pendingProject')
+  }
+})
 
 function handleDrop(event) {
   const files = event.dataTransfer.files
@@ -85,156 +132,154 @@ function handleDrop(event) {
   }
 }
 
+function handleCreate() {
+  if (!isLogged()) {
+    localStorage.setItem('pendingProject', JSON.stringify({
+      savedProjectName: projectName.value,
+      savedTargetLanguage: targetLanguage.value,
+      redirectAfterLogin: '/'
+    }))
+    router.push('/login')
+    return
+  }
+  createProject()
+}
 
 async function createProject() {
   if (!videoFile.value || !projectName.value.trim()) {
     alert('Controlla i campi obbligatori.');
     return;
   }
-    try {
-       loading.value = true;
-       transcribingProgress.value = 0;
-       translatingProgress.value = 0;
-       
-      const formData = new FormData();
-      formData.append('file', videoFile.value);
+  try {
+    loading.value = true;
+    transcribingProgress.value = 0;
+    translatingProgress.value = 0;
 
-      console.log('Inizio caricamento video...');
+    const formData = new FormData();
+    formData.append('file', videoFile.value);
 
-      const conversionJob = await axios.post(apiConversionPost, formData, {
-        headers: {
-          'Authorization': tokenBearer,        
-          'Content-Type': 'multipart/form-data'
-        },
-        params:{
-          translate_to: targetLanguage.value
-        }
+    console.log('Inizio caricamento video...');
+
+    const conversionJob = await axios.post(apiConversionPost, formData, {
+      headers: {
+        'Authorization': tokenBearer,
+        'Content-Type': 'multipart/form-data'
+      },
+      params: {
+        translate_to: targetLanguage.value
+      }
+    });
+
+    const jobId = conversionJob.data.id;
+    console.log('Job conversione creato:', jobId);
+
+    const maxAttempts = 3000;
+    const pollInterval = 1000;
+    let conversionCompleted = false;
+
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      console.log(`Controllo status (tentativo ${attempt})...`);
+
+      const statusResponse = await axios.get(`${apiConversionStatus}?id=${jobId}`, {
+        headers: { 'Authorization': tokenBearer }
       });
 
-      const jobId = conversionJob.data.id;
-      console.log('Job conversione creato:', jobId);
+      const { status, error, stage, progress } = statusResponse.data;
 
-      console.log('Attendo completamento conversione...');
-      
-      const maxAttempts = 3000;
-      const pollInterval = 1000;
-      let conversionCompleted = false;
-      
-      for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-        console.log(`Controllo status (tentativo ${attempt})...`);
-        
-        const statusResponse = await axios.get(`${apiConversionStatus}?id=${jobId}`, {
-          headers: {
-            'Authorization': tokenBearer
-          }
-        });
-        
-        console.log('Response:', statusResponse.data); 
-        
-        const { status, error, stage, progress } = statusResponse.data;
-        
-        console.log(`   Status attuale: ${status}, Stage: ${stage}, Progress: ${progress}`);
-        
-        if (stage === 'transcribing') {
-          transcribingProgress.value = Math.trunc(progress || 0);
-        } else if (stage === 'translating') {
-          transcribingProgress.value = 100; 
-          translatingProgress.value = Math.trunc(progress || 0);
-        }
-        
-        if (status === 'completed') {
-          console.log('Conversione completata!');
-          transcribingProgress.value = 100;
-          translatingProgress.value = 100;
-          conversionCompleted = true;
-          break;
-        }
-        
-        if (status === 'failed') {
-          throw new Error(error || 'Conversione fallita');
-        }
-        
-        await new Promise(resolve => setTimeout(resolve, pollInterval));
+      if (stage === 'transcribing') {
+        transcribingProgress.value = Math.trunc(progress || 0);
+      } else if (stage === 'translating') {
+        transcribingProgress.value = 100;
+        translatingProgress.value = Math.trunc(progress || 0);
       }
 
-      if (!conversionCompleted) {
-        throw new Error('Timeout: conversione non completata');
+      if (status === 'completed') {
+        transcribingProgress.value = 100;
+        translatingProgress.value = 100;
+        conversionCompleted = true;
+        break;
       }
 
-      const sourceLang =await axios.get(`${apiConversionLang}?id=${jobId}`, {
-          headers: {
-            'Authorization': tokenBearer
-          }
-        });
-      console.log(sourceLang.data)  
+      if (status === 'failed') {
+        throw new Error(error || 'Conversione fallita');
+      }
 
-      console.log('Recupero sottotitoli ...');
-
-      const subtitlesResponse = await axios.get(`${apiConversionOut}?id=${jobId}`, {
-        headers: {
-          'Authorization': tokenBearer
-        }
-      }).then(subtitlesResponse => {
-        const sub = subtitlesResponse.data;
-        const blocchi = sub.trim().split(/\r?\n\r?\n/);
-        
-        subtitles = blocchi.map(blocco => {  
-          const righe = blocco.split(/\r?\n/);
-          if (righe.length >= 3) {
-            return {
-              timestamp: righe[1],           
-              testo: righe.slice(2).join(' ') 
-            };
-          }
-          return null;
-        }).filter(item => item !== null); 
-        
-        localStorage.setItem('subtitles', JSON.stringify(subtitles));
-      });
-
-      const TranslatedSubtitles = await axios.get(`${apiConversionTranslated}?id=${jobId}`, {
-        headers: {
-          'Authorization': tokenBearer
-        }
-      }).then(response => {
-        const data = response.data;
-        const blocchi = data.trim().split(/\r?\n\r?\n/);
-        
-        tranSubtitles = blocchi.map(blocco => {  
-          const righe = blocco.split(/\r?\n/);
-          if (righe.length >= 3) {
-            return {
-              timestamp: righe[1],           
-              testo: righe.slice(2).join(' ') 
-            };
-          }
-          return null;
-        }).filter(item => item !== null);
-        
-        localStorage.setItem('tranSubtitles', JSON.stringify(tranSubtitles)); 
-      });
-
-      loading.value = false;
-
-      router.push({
-        name: 'video-player',
-        state: { 
-          videoFile: videoFile.value,
-          projectName: projectName.value,
-          subtitles: subtitles,          
-          tranSubtitles: tranSubtitles
-        }
-      });
-    } catch (error) {
-      console.error('Errore completo:', error);
-      console.error('Risposta server:', error.response?.data);
-      console.error('Status HTTP:', error.response?.status);
-      console.error('URL chiamato:', error.config?.url);
-      loading.value = false;
-      alert(`Errore: ${error.message}`);
+      await new Promise(resolve => setTimeout(resolve, pollInterval));
     }
-  }
 
+    if (!conversionCompleted) {
+      throw new Error('Timeout: conversione non completata');
+    }
+
+    const sourceLang = await axios.get(`${apiConversionLang}?id=${jobId}`, {
+      headers: { 'Authorization': tokenBearer }
+    });
+    console.log(sourceLang.data);
+
+    await axios.get(`${apiConversionOut}?id=${jobId}`, {
+      headers: { 'Authorization': tokenBearer }
+    }).then(subtitlesResponse => {
+      const sub = subtitlesResponse.data;
+      const blocchi = sub.trim().split(/\r?\n\r?\n/);
+      subtitles = blocchi.map(blocco => {
+        const righe = blocco.split(/\r?\n/);
+        if (righe.length >= 3) {
+          return { timestamp: righe[1], testo: righe.slice(2).join(' ') };
+        }
+        return null;
+      }).filter(item => item !== null);
+      localStorage.setItem('subtitles', JSON.stringify(subtitles));
+    });
+
+    await axios.get(`${apiConversionTranslated}?id=${jobId}`, {
+      headers: { 'Authorization': tokenBearer }
+    }).then(response => {
+      const data = response.data;
+      const blocchi = data.trim().split(/\r?\n\r?\n/);
+      tranSubtitles = blocchi.map(blocco => {
+        const righe = blocco.split(/\r?\n/);
+        if (righe.length >= 3) {
+          return { timestamp: righe[1], testo: righe.slice(2).join(' ') };
+        }
+        return null;
+      }).filter(item => item !== null);
+      localStorage.setItem('tranSubtitles', JSON.stringify(tranSubtitles));
+    });
+
+    // ─── Crea il progetto sul backend ─────────────────────────────────────────
+    const srt1 = arrayToSrt(tranSubtitles)  // tradotto
+    const srt2 = arrayToSrt(subtitles)      // originale
+
+    console.log('Token usato per POST /projects:', localStorage.getItem('subtitles_token'))
+
+    const projectRes = await apiAdmin.post('/projects', {
+      name: projectName.value,
+      data: JSON.stringify({ srt1, srt2, playhead: 0 })
+      // user_id omesso: il backend lo ricava dal token
+    })
+
+    const createdProject = projectRes.data
+    // ─────────────────────────────────────────────────────────────────────────
+
+    loading.value = false;
+
+    router.push({
+      name: 'video-player',
+      state: {
+        videoFile: videoFile.value,
+        project: createdProject,
+        subtitles: subtitles,
+        tranSubtitles: tranSubtitles
+      }
+    });
+  } catch (error) {
+    console.error('Errore completo:', error);
+    console.error('Response data:', error.response?.data)
+    console.error('Response status:', error.response?.status)
+    loading.value = false;
+    alert(`Errore: ${error.message}`);
+  }
+}
 </script>
 
 <style scoped>
@@ -263,17 +308,7 @@ h1 {
   font-size: 1.8rem;
 }
 
-.project-form-content {
-  background: #2a2a2a;
-  padding: 2rem;
-  border-radius: 8px;
-  border: 1px solid #3a3a3a;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
-  display: flex;
-  flex-direction: column;
-}
-
-.main-form{
+.main-form {
   padding: 2rem;
   border-radius: 8px;
   display: flex;
