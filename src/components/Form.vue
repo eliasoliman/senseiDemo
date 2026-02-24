@@ -55,7 +55,6 @@ import { ref, onMounted } from 'vue'
 import axios from 'axios'
 import { useRouter } from 'vue-router'
 
-// ─── Props ────────────────────────────────────────────────────────────────────
 const props = defineProps({
   userId: {
     type: Number,
@@ -82,14 +81,15 @@ const apiConversionTranslated = 'https://api.matita.net/whisper/conversion-trans
 
 const tokenBearer = 'Bearer dkPJpR2DqOLPppgQn4oIGPcdQ7W_zgGYvOyf2HTJPxE'
 
-// ─── Axios instance per le admin API ─────────────────────────────────────────
 const API_BASE = 'https://api.matita.net/subtitles-admin'
 const apiAdmin = axios.create({ baseURL: API_BASE })
+
 apiAdmin.interceptors.request.use((config) => {
   const token = localStorage.getItem('subtitles_token')
   if (token) config.headers['Authorization'] = `Bearer ${token}`
   return config
 })
+
 apiAdmin.interceptors.response.use(
   (response) => {
     const refreshed = response.headers['x-refresh-token']
@@ -101,14 +101,6 @@ apiAdmin.interceptors.response.use(
   (error) => Promise.reject(error)
 )
 
-// ─── Utility: array → SRT string ─────────────────────────────────────────────
-const arrayToSrt = (arr) => {
-  return arr.map((sub, i) => {
-    return `${i + 1}\n${sub.timestamp}\n${sub.testo}`
-  }).join('\n\n')
-}
-
-// ─── Auth helper ──────────────────────────────────────────────────────────────
 function isLogged() {
   return localStorage.getItem('isLogged') === 'true'
 }
@@ -150,6 +142,7 @@ async function createProject() {
     alert('Controlla i campi obbligatori.');
     return;
   }
+
   try {
     loading.value = true;
     transcribingProgress.value = 0;
@@ -157,8 +150,6 @@ async function createProject() {
 
     const formData = new FormData();
     formData.append('file', videoFile.value);
-
-    console.log('Inizio caricamento video...');
 
     const conversionJob = await axios.post(apiConversionPost, formData, {
       headers: {
@@ -171,15 +162,12 @@ async function createProject() {
     });
 
     const jobId = conversionJob.data.id;
-    console.log('Job conversione creato:', jobId);
 
     const maxAttempts = 3000;
     const pollInterval = 1000;
     let conversionCompleted = false;
 
     for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-      console.log(`Controllo status (tentativo ${attempt})...`);
-
       const statusResponse = await axios.get(`${apiConversionStatus}?id=${jobId}`, {
         headers: { 'Authorization': tokenBearer }
       });
@@ -211,55 +199,44 @@ async function createProject() {
       throw new Error('Timeout: conversione non completata');
     }
 
-    const sourceLang = await axios.get(`${apiConversionLang}?id=${jobId}`, {
+    // ─── SRT ORIGINALE ─────────────────────────────────────────
+    const originalResponse = await axios.get(`${apiConversionOut}?id=${jobId}`, {
       headers: { 'Authorization': tokenBearer }
     });
-    console.log(sourceLang.data);
 
-    await axios.get(`${apiConversionOut}?id=${jobId}`, {
+    const srt2 = originalResponse.data;
+
+    const blocchiOriginal = srt2.trim().split(/\r?\n\r?\n/);
+    subtitles = blocchiOriginal.map(blocco => {
+      const righe = blocco.split(/\r?\n/);
+      if (righe.length >= 3) {
+        return { timestamp: righe[1], testo: righe.slice(2).join(' ') };
+      }
+      return null;
+    }).filter(item => item !== null);
+
+    // ─── SRT TRADOTTO ─────────────────────────────────────────
+    const translatedResponse = await axios.get(`${apiConversionTranslated}?id=${jobId}`, {
       headers: { 'Authorization': tokenBearer }
-    }).then(subtitlesResponse => {
-      const sub = subtitlesResponse.data;
-      const blocchi = sub.trim().split(/\r?\n\r?\n/);
-      subtitles = blocchi.map(blocco => {
-        const righe = blocco.split(/\r?\n/);
-        if (righe.length >= 3) {
-          return { timestamp: righe[1], testo: righe.slice(2).join(' ') };
-        }
-        return null;
-      }).filter(item => item !== null);
-      localStorage.setItem('subtitles', JSON.stringify(subtitles));
     });
 
-    await axios.get(`${apiConversionTranslated}?id=${jobId}`, {
-      headers: { 'Authorization': tokenBearer }
-    }).then(response => {
-      const data = response.data;
-      const blocchi = data.trim().split(/\r?\n\r?\n/);
-      tranSubtitles = blocchi.map(blocco => {
-        const righe = blocco.split(/\r?\n/);
-        if (righe.length >= 3) {
-          return { timestamp: righe[1], testo: righe.slice(2).join(' ') };
-        }
-        return null;
-      }).filter(item => item !== null);
-      localStorage.setItem('tranSubtitles', JSON.stringify(tranSubtitles));
-    });
+    const srt1 = translatedResponse.data;
 
-    // ─── Crea il progetto sul backend ─────────────────────────────────────────
-    const srt1 = arrayToSrt(tranSubtitles)  // tradotto
-    const srt2 = arrayToSrt(subtitles)      // originale
-
-    console.log('Token usato per POST /projects:', localStorage.getItem('subtitles_token'))
+    const blocchiTradotti = srt1.trim().split(/\r?\n\r?\n/);
+    tranSubtitles = blocchiTradotti.map(blocco => {
+      const righe = blocco.split(/\r?\n/);
+      if (righe.length >= 3) {
+        return { timestamp: righe[1], testo: righe.slice(2).join(' ') };
+      }
+      return null;
+    }).filter(item => item !== null);
 
     const projectRes = await apiAdmin.post('/projects', {
       name: projectName.value,
       data: JSON.stringify({ srt1, srt2, playhead: 0 })
-      // user_id omesso: il backend lo ricava dal token
-    })
+    });
 
-    const createdProject = projectRes.data
-    // ─────────────────────────────────────────────────────────────────────────
+    const createdProject = projectRes.data;
 
     loading.value = false;
 
@@ -272,6 +249,7 @@ async function createProject() {
         tranSubtitles: tranSubtitles
       }
     });
+
   } catch (error) {
     console.error('Errore completo:', error);
     console.error('Response data:', error.response?.data)

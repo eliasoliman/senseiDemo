@@ -1,89 +1,74 @@
 <template>
-  <div class="cover-wrapper text-center text-bg-dark">
-    <header class="position-absolute top-0 start-0 end-0 p-3 d-flex justify-content-between align-items-center">
-      <h1 class="mb-0">Sensei</h1>
-      <nav class="nav">
-        <a
-          href='/login'
-          class="workspace btn btn-lg glass-btn" 
-          style="background: rgba(255, 255, 255, 0.4); border: 1px solid rgba(255, 255, 255, 0.2); color: #009cc8;"
-        >
-          Workspace
-        </a>
-      </nav>
-      
-    </header>
-    
-    <main class="main-content text-center">
-      <Form class="form"/>
-    </main>  
-       
+  <div class="redirect-screen">
+    <div class="spinner"></div>
+    <p>Verifica accesso in corso...</p>
   </div>
-    
 </template>
 
 <script setup>
-import Form from '../components/Form.vue'
+import { onMounted } from 'vue';
+import { useRouter } from 'vue-router';
+import axios from 'axios';
+
+const router = useRouter();
+
+onMounted(async () => {
+  const token = localStorage.getItem('subtitles_token');
+
+  // Se non c'è il token, vai direttamente al login senza chiamare l'API
+  if (!token) {
+    router.replace('/login');
+    return;
+  }
+
+  try {
+    // Chiamata GET all'endpoint richiesto
+    const response = await axios.get('https://api.matita.net/subtitles-admin/me', {
+      headers: {
+        Authorization: `Bearer ${token}`
+      }
+    });
+
+    if (response.status === 200) {
+      // Se l'API dice OK, vai ai progetti
+      router.replace('/myprojects');
+    } else {
+      // Qualsiasi altro stato, torna al login
+      router.replace('/login');
+    }
+  } catch (error) {
+    // Se il token è scaduto o l'API dà errore (es. 401), pulisci e vai al login
+    console.error("Sessione non valida:", error);
+    localStorage.removeItem('subtitles_token'); 
+    router.replace('/login');
+  }
+});
 </script>
 
 <style scoped>
-.position-absolute{
-  background-color: #1A1A1A;
-}
-.cover-wrapper {
-  min-height: 100vh;
+.redirect-screen {
+  height: 100vh;
+  width: 100vw;
   display: flex;
   flex-direction: column;
+  justify-content: center;
   align-items: center;
-  background: #2a2a2a;
-  text-shadow: 0 0.05rem 0.1rem rgba(0, 0, 0, 0.5);
+  background-color: #111418; /* Sfondo scuro coerente con il tuo stile */
+  color: white;
+  font-family: sans-serif;
 }
 
-h1{
-  color: rgba(255, 255, 255, 0.918);
+.spinner {
+  border: 4px solid rgba(255, 255, 255, 0.1);
+  border-left-color: #3b82f6;
+  border-radius: 50%;
+  width: 30px;
+  height: 30px;
+  animation: spin 1s linear infinite;
+  margin-bottom: 1rem;
 }
 
-.main-content {
-  max-width: 40rem;
-  padding: 0 1rem;
-  transform: translateY(33%);
-}
-
-.btn{
-  background-color: rgba(31, 31, 31, 0.918);
-  border-color: rgba(31, 31, 31, 0.918);
-  border-radius: 16px;
-}
-
-.glass-btn:hover {
-  transform: scale(1.05);
-  background: rgba(255, 255, 255, 0.2) !important;
-  box-shadow: 0 8px 25px rgba(255, 255, 255, 0.4);
-}
-form{
-  min-width: 100%;
-  min-height: 100%;
-}
-
-
-@media (max-width: 768px) {
-.cover-wrapper {
-  min-width: 100%;
-}
-
-.main-content {
-  max-width: 40rem;
-}
-
-.signup{
-  display: none;
-}
-
-.text-black{
-  font-size: 1.1em;
-}
-p{
-  font-size: 0.8em;
-}
+@keyframes spin {
+  to { transform: rotate(360deg); }
 }
 </style>

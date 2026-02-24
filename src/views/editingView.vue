@@ -7,6 +7,10 @@ const router = useRouter()
 
 const videoUrl = ref('')
 const videoFile = ref(null)
+
+// Modal bloccante per il drop del video (quando si arriva da myprojects)
+const showVideoDropModal = ref(false)
+const videoDropError = ref('')
 const subtitles = ref([])
 const tranSubtitles = ref([])
 const videoPlayer = ref(null) 
@@ -104,7 +108,7 @@ const buildTimestamp = (startSec, endSec) => {
 
 const addSubtitleBetween = (index) => {
   saveUndoSnapshot()
-  const DEFAULT_DURATION = 0.2
+  const DEFAULT_DURATION = 0.4
   const targetArray = activeSidebarTrack.value === 'tran' ? tranSubtitles : subtitles
 
   const prev = targetArray.value[index]
@@ -157,7 +161,6 @@ const mergeSubtitles = (index) => {
   }
 }
 
-// Active subtitle index based on which track is shown in sidebar
 const getActiveSubtitleIndex = () => {
   const arr = sidebarSubtitles.value
   if (!arr || arr.length === 0) return -1
@@ -180,7 +183,6 @@ const getActiveSubtitleIndex = () => {
   return -1
 }
 
-// Subtitle text shown as overlay — always from tranSubtitles (Track 1)
 const activeSubtitleText = computed(() => {
   const arr = activeSidebarTrack.value === 'tran' ? tranSubtitles.value : subtitles.value
   if (!arr || arr.length === 0) return ''
@@ -371,48 +373,66 @@ const handleKeydown = (e) => {
   }
 }
 
-// --- Save button logic ---
-const isLoggedIn = () => {
-  return !!localStorage.getItem('authToken') // adatta al tuo sistema auth
-}
-
 const handleSave = () => {
-  if (!isLoggedIn()) {
-    router.push('/login')
-    return
-  }
   // TODO: logica di salvataggio
 }
-// -------------------------
 
 watch(currentTime, () => {
   scrollSidebarToActive()
 })
 
-// Reset selected index when switching tracks
 watch(activeSidebarTrack, () => {
   selectedSubtitleIndex.value = -1
 })
 
-onMounted(() => {
-  if (history.state) {
-    videoFile.value = history.state.videoFile
-    videoUrl.value = URL.createObjectURL(videoFile.value)
+// ─── Carica il video droppato nel modal bloccante ────────────────────────────
+const handleVideoDropModal = (event) => {
+  const files = event.dataTransfer.files
+  if (files.length > 0 && files[0].type.startsWith('video/')) {
+    loadVideoFile(files[0])
+  } else {
+    videoDropError.value = 'Please drop a valid video file.'
   }
-  
-  const stored = localStorage.getItem('subtitles')
-  if (stored) {
-    subtitles.value = JSON.parse(stored)
-  }
+}
 
-  const storedTran = localStorage.getItem('tranSubtitles')
-  if (storedTran) {
-    tranSubtitles.value = JSON.parse(storedTran)
+const handleVideoSelectModal = (event) => {
+  const file = event.target.files[0]
+  if (file && file.type.startsWith('video/')) {
+    loadVideoFile(file)
+  } else {
+    videoDropError.value = 'Please select a valid video file.'
   }
+}
 
+const loadVideoFile = (file) => {
+  videoFile.value = file
+  videoUrl.value = URL.createObjectURL(file)
+  videoDropError.value = ''
+  showVideoDropModal.value = false
   nextTick(() => {
     setupVideoSync()
   })
+}
+
+onMounted(() => {
+  // Leggi i sottotitoli da localStorage
+  // (scritti sia da Form.vue che da myprojects.vue prima del push)
+  const stored = localStorage.getItem('subtitles')
+  if (stored) subtitles.value = JSON.parse(stored)
+
+  const storedTran = localStorage.getItem('tranSubtitles')
+  if (storedTran) tranSubtitles.value = JSON.parse(storedTran)
+
+  // Controlla se il video è già disponibile (caso Form.vue — stesso processo JS)
+  const file = history.state?.videoFile || null
+  if (file) {
+    videoFile.value = file
+    videoUrl.value = URL.createObjectURL(file)
+    nextTick(() => { setupVideoSync() })
+  } else {
+    // Nessun video trovato — mostra modal bloccante per il drop
+    showVideoDropModal.value = true
+  }
 
   window.addEventListener('keydown', handleKeydown)
 })
@@ -473,7 +493,6 @@ watch(videoPlayer, (newPlayer) => {
     <div class="container">
       <div class="content">
         <div class="sidebar">
-          <!-- Track indicator badge -->
           <div class="sidebar-track-badge" :class="activeSidebarTrack === 'tran' ? 'badge-tran' : 'badge-orig'">
             <svg v-if="activeSidebarTrack === 'tran'" xmlns="http://www.w3.org/2000/svg" width="13" height="13" fill="currentColor" viewBox="0 0 16 16">
               <path d="M16 8s-3-5.5-8-5.5S0 8 0 8s3 5.5 8 5.5S16 8 16 8M1.173 8a13 13 0 0 1 1.66-2.043C4.12 4.668 5.88 3.5 8 3.5s3.879 1.168 5.168 2.457A13 13 0 0 1 14.828 8q-.086.13-.195.288c-.335.48-.83 1.12-1.465 1.755C11.879 11.332 10.119 12.5 8 12.5s-3.879-1.168-5.168-2.457A13 13 0 0 1 1.172 8z"/>
@@ -507,52 +526,73 @@ watch(videoPlayer, (newPlayer) => {
               >
                 <div class="separator-line"></div>
                 <div class="separator-actions">
-                  <button
-                    class="btn-sep btn-add"
-                    title="Aggiungi sottotitolo vuoto qui"
-                    @click.stop="addSubtitleBetween(index)"
-                  >+ add</button>
-                  <button
-                    class="btn-sep btn-merge"
-                    title="Unisci i due sottotitoli"
-                    @click.stop="mergeSubtitles(index)"
-                  >⊕ merge</button>
+                  <button class="btn-sep btn-add" @click.stop="addSubtitleBetween(index)">+ add</button>
+                  <button class="btn-sep btn-merge" @click.stop="mergeSubtitles(index)">⊕ merge</button>
                 </div>
                 <div class="separator-line"></div>
               </div>
-            </template>
+            
+    <!-- MODAL BLOCCANTE DROP VIDEO — non chiudibile -->
+    <div v-if="showVideoDropModal" class="video-drop-overlay">
+      <div class="video-drop-box">
+        <div class="video-drop-icon">
+          <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" fill="currentColor" viewBox="0 0 16 16">
+            <path d="M6.79 5.093A.5.5 0 0 0 6 5.5v5a.5.5 0 0 0 .79.407l3.5-2.5a.5.5 0 0 0 0-.814l-3.5-2.5z"/>
+            <path d="M0 4a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2V4zm15 0a1 1 0 0 0-1-1H2a1 1 0 0 0-1 1v8a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V4z"/>
+          </svg>
+        </div>
+        <h2>Load your video</h2>
+        <p>The video file is not stored on our servers.<br>Drop the original file to start editing.</p>
+        <div
+          class="video-drop-zone"
+          @dragover.prevent
+          @drop.prevent="handleVideoDropModal"
+          @click="$refs.videoDropInput.click()"
+        >
+          <input ref="videoDropInput" type="file" accept="video/*" style="display:none" @change="handleVideoSelectModal" />
+          <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" fill="currentColor" viewBox="0 0 16 16">
+            <path d="M.5 9.9a.5.5 0 0 1 .5.5v2.5a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-2.5a.5.5 0 0 1 1 0v2.5a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2v-2.5a.5.5 0 0 1 .5-.5z"/>
+            <path d="M7.646 1.146a.5.5 0 0 1 .708 0l3 3a.5.5 0 0 1-.708.708L8.5 2.707V11.5a.5.5 0 0 1-1 0V2.707L5.354 4.854a.5.5 0 1 1-.708-.708l3-3z"/>
+          </svg>
+          <span>Drop video here or click to browse</span>
+        </div>
+        <p v-if="videoDropError" class="video-drop-error">{{ videoDropError }}</p>
+      </div>
+    </div>
+
+</template>
           </div>
         </div>
 
         <div class="video-area">
           <div class="video-box">
-              <video ref="videoPlayer" v-if="videoUrl" :src="videoUrl" controls></video>
-              <div v-if="activeSubtitleText" class="subtitle-overlay">
-                <span class="subtitle-text">{{ activeSubtitleText }}</span>
-              </div>
+            <video ref="videoPlayer" v-if="videoUrl" :src="videoUrl" controls></video>
+            <div v-if="activeSubtitleText" class="subtitle-overlay">
+              <span class="subtitle-text">{{ activeSubtitleText }}</span>
+            </div>
           </div>
           <div class="video-commands">
             <svg @click="restartVideo" xmlns="http://www.w3.org/2000/svg" width="25" height="25" fill="currentColor" class="bi bi-skip-start-fill" viewBox="0 0 16 16"><path d="M4 4a.5.5 0 0 1 1 0v3.248l6.267-3.636c.54-.313 1.232.066 1.232.696v7.384c0 .63-.692 1.01-1.232.697L5 8.753V12a.5.5 0 0 1-1 0z"/></svg>
             <svg @click="togglePlay" v-if="!isPlaying" xmlns="http://www.w3.org/2000/svg" width="30" height="30" fill="currentColor" class="bi bi-play-fill" viewBox="0 0 16 16"><path d="m11.596 8.697-6.363 3.692c-.54.313-1.233-.066-1.233-.697V4.308c0-.63.692-1.01 1.233-.696l6.363 3.692a.802.802 0 0 1 0 1.393"/></svg>
             <svg @click="togglePlay" v-else xmlns="http://www.w3.org/2000/svg" width="30" height="30" fill="currentColor" class="bi bi-pause-fill" viewBox="0 0 16 16"><path d="M5.5 3.5A1.5 1.5 0 0 1 7 5v6a1.5 1.5 0 0 1-3 0V5a1.5 1.5 0 0 1 1.5-1.5m5 0A1.5 1.5 0 0 1 12 5v6a1.5 1.5 0 0 1-3 0V5a1.5 1.5 0 0 1 1.5-1.5"/></svg>
             <svg @click="endVideo" xmlns="http://www.w3.org/2000/svg" width="25" height="25" fill="currentColor" class="bi bi-skip-end-fill" viewBox="0 0 16 16"><path d="M12.5 4a.5.5 0 0 0-1 0v3.248L5.233 3.612C4.693 3.3 4 3.678 4 4.308v7.384c0 .63.692 1.01 1.233.697L11.5 8.753V12a.5.5 0 0 0 1 0z"/></svg>
-          </div> 
+          </div>
         </div>
       </div>
 
       <div class="timeline">
         <div class="time-row">
           <div class="name zoomIcons">
-              <svg @click="zoomOut" xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="currentColor" class="bi bi-zoom-out" viewBox="0 0 16 16">
-                <path fill-rule="evenodd" d="M6.5 12a5.5 5.5 0 1 0 0-11 5.5 5.5 0 0 0 0 11M13 6.5a6.5 6.5 0 1 1-13 0 6.5 6.5 0 0 1 13 0"/><path d="M10.344 11.742q.044.06.098.115l3.85 3.85a1 1 0 0 0 1.415-1.414l-3.85-3.85a1 1 0 0 0-.115-.1 6.5 6.5 0 0 1-1.398 1.4z"/><path fill-rule="evenodd" d="M3 6.5a.5.5 0 0 1 .5-.5h6a.5.5 0 0 1 0 1h-6a.5.5 0 0 1-.5-.5"/>
-              </svg>
-              <svg @click="zoomIn" xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="currentColor" class="bi bi-zoom-in" viewBox="0 0 16 16">
-                <path fill-rule="evenodd" d="M6.5 12a5.5 5.5 0 1 0 0-11 5.5 5.5 0 0 0 0 11M13 6.5a6.5 6.5 0 1 1-13 0 6.5 6.5 0 0 1 13 0"/><path d="M10.344 11.742q.044.06.098.115l3.85 3.85a1 1 0 0 0 1.415-1.414l-3.85-3.85a1 1 0 0 0-.115-.1 6.5 6.5 0 0 1-1.398 1.4z"/><path fill-rule="evenodd" d="M6.5 3a.5.5 0 0 1 .5.5V6h2.5a.5.5 0 0 1 0 1H7v2.5a.5.5 0 0 1-1 0V7H3.5a.5.5 0 0 1 0-1H6V3.5a.5.5 0 0 1 .5-.5"/>
-              </svg>
-          <svg @click="undo" xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="currentColor" viewBox="0 0 16 16">
-            <path fill-rule="evenodd" d="M8 3a5 5 0 1 1-4.546 2.914.5.5 0 0 0-.908-.417A6 6 0 1 0 8 2z"/>
-            <path d="M8 4.466V.534a.25.25 0 0 0-.41-.192L5.23 2.308a.25.25 0 0 0 0 .384l2.36 1.966A.25.25 0 0 0 8 4.466"/>
-          </svg>
+            <svg @click="zoomOut" xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="currentColor" class="bi bi-zoom-out" viewBox="0 0 16 16">
+              <path fill-rule="evenodd" d="M6.5 12a5.5 5.5 0 1 0 0-11 5.5 5.5 0 0 0 0 11M13 6.5a6.5 6.5 0 1 1-13 0 6.5 6.5 0 0 1 13 0"/><path d="M10.344 11.742q.044.06.098.115l3.85 3.85a1 1 0 0 0 1.415-1.414l-3.85-3.85a1 1 0 0 0-.115-.1 6.5 6.5 0 0 1-1.398 1.4z"/><path fill-rule="evenodd" d="M3 6.5a.5.5 0 0 1 .5-.5h6a.5.5 0 0 1 0 1h-6a.5.5 0 0 1-.5-.5"/>
+            </svg>
+            <svg @click="zoomIn" xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="currentColor" class="bi bi-zoom-in" viewBox="0 0 16 16">
+              <path fill-rule="evenodd" d="M6.5 12a5.5 5.5 0 1 0 0-11 5.5 5.5 0 0 0 0 11M13 6.5a6.5 6.5 0 1 1-13 0 6.5 6.5 0 0 1 13 0"/><path d="M10.344 11.742q.044.06.098.115l3.85 3.85a1 1 0 0 0 1.415-1.414l-3.85-3.85a1 1 0 0 0-.115-.1 6.5 6.5 0 0 1-1.398 1.4z"/><path fill-rule="evenodd" d="M6.5 3a.5.5 0 0 1 .5.5V6h2.5a.5.5 0 0 1 0 1H7v2.5a.5.5 0 0 1-1 0V7H3.5a.5.5 0 0 1 0-1H6V3.5a.5.5 0 0 1 .5-.5"/>
+            </svg>
+            <svg @click="undo" xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="currentColor" viewBox="0 0 16 16">
+              <path fill-rule="evenodd" d="M8 3a5 5 0 1 1-4.546 2.914.5.5 0 0 0-.908-.417A6 6 0 1 0 8 2z"/>
+              <path d="M8 4.466V.534a.25.25 0 0 0-.41-.192L5.23 2.308a.25.25 0 0 0 0 .384l2.36 1.966A.25.25 0 0 0 8 4.466"/>
+            </svg>
           </div>
           <div class="track">
             <subTimeline 
@@ -618,18 +658,9 @@ watch(videoPlayer, (newPlayer) => {
   grid-template-areas: "header" "container"; 
   overflow: hidden; 
 }
-.header { 
-  grid-area: header; 
-  background-color: #212529; 
-  height: 50px; 
-}
-h3 { 
-  color: rgba(18, 83, 163, 0.918); 
-}
-.nav { 
-  display: flex; 
-  gap: 1rem; 
-}
+.header { grid-area: header; background-color: #212529; height: 50px; }
+h3 { color: rgba(18, 83, 163, 0.918); }
+.nav { display: flex; gap: 1rem; }
 
 .btn-save {
   display: flex;
@@ -646,23 +677,17 @@ h3 {
   transition: all 0.2s ease;
   letter-spacing: 0.03em;
 }
-
-.btn-save:hover {
-  background: rgba(18, 83, 163, 1);
-  transform: translateY(-1px);
-  box-shadow: 0 4px 10px rgba(18, 83, 163, 0.4);
-}
-
-.btn-save:active {
-  transform: translateY(0);
-}
+.btn-save:hover { background: rgba(18, 83, 163, 1); transform: translateY(-1px); box-shadow: 0 4px 10px rgba(18, 83, 163, 0.4); }
+.btn-save:active { transform: translateY(0); }
 
 .container { 
   grid-area: container; 
   display: grid; 
   grid-template-rows: 65% 35%; 
-  min-width: 100%; height: calc(100vh); 
-  overflow: hidden; gap: 0; 
+  min-width: 100%; 
+  height: calc(100vh); 
+  overflow: hidden; 
+  gap: 0; 
 }
 .content { 
   display: grid; 
@@ -671,17 +696,10 @@ h3 {
   overflow: hidden; 
   height: 100%; 
   align-items: stretch; 
-  max-height: 100% 
+  max-height: 100%;
 }
-.sidebar { 
-  background-color: rgb(40, 40, 40); 
-  display: flex; 
-  flex-direction: column; 
-  overflow: hidden; 
-  height: 100%; 
-}
+.sidebar { background-color: rgb(40, 40, 40); display: flex; flex-direction: column; overflow: hidden; height: 100%; }
 
-/* Track badge at top of sidebar */
 .sidebar-track-badge {
   display: flex;
   align-items: center;
@@ -694,381 +712,144 @@ h3 {
   flex-shrink: 0;
   border-bottom: 1px solid rgba(255,255,255,0.06);
 }
+.badge-tran { color: rgba(18, 83, 163, 0.918); background: rgba(18, 83, 163, 0.12); }
+.badge-orig { color: #00cc99; background: rgba(0, 170, 140, 0.12); }
 
-.badge-tran {
-  color: rgba(18, 83, 163, 0.918);
-  background: rgba(18, 83, 163, 0.12);
-}
-
-.badge-orig {
-  color: #00cc99;
-  background: rgba(0, 170, 140, 0.12);
-}
-
-.subtitles-scroll { 
-  flex: 1; 
-  overflow-y: auto; 
-  overflow-x: hidden; 
-  padding-right: 0.5rem; 
-  min-height: 0;
-  scroll-behavior: smooth;
-}
+.subtitles-scroll { flex: 1; overflow-y: auto; overflow-x: hidden; padding-right: 0.5rem; min-height: 0; scroll-behavior: smooth; }
 
 .subtitle-block { 
-  display: flex;
-  flex-direction: column;
-  padding: 0.3px;
-  margin-bottom: 0;
-  background: #2a2d31; 
-  border-left: 4px solid rgba(18, 83, 163, 0.918); 
-  border-radius: 4px;
-  transition: all 0.3s ease;
-  cursor: pointer;
+  display: flex; flex-direction: column; padding: 0.3px; margin-bottom: 0;
+  background: #2a2d31; border-left: 4px solid rgba(18, 83, 163, 0.918); 
+  border-radius: 4px; transition: all 0.3s ease; cursor: pointer;
 }
+.badge-orig ~ .subtitles-scroll .subtitle-block { border-left-color: #00aa8c; }
+.subtitle-block:hover { background: #353841; }
+.subtitle-block-active { background: #3a4a5a !important; box-shadow: 0 0 8px rgba(137, 41, 234, 0.6); transform: scale(1.02); }
 
-/* When showing Track 2 (orig), use teal accent */
-.badge-orig ~ .subtitles-scroll .subtitle-block {
-  border-left-color: #00aa8c;
-}
+.timestamp { display: block; font-weight: bold; color: rgba(18, 83, 163, 0.918); font-size: 0.85rem; margin-bottom: 4px; flex-shrink: 0; }
+.subtitle-block-active .timestamp { color: rgba(137, 41, 234, 0.6); }
+.testo { margin: 0 0 6px 5px; color: #fff; line-height: 1.4; font-size: 0.9rem; word-break: break-word; }
 
-.subtitle-block:hover {
-  background: #353841;
-}
+.block-actions { display: flex; justify-content: flex-end; gap: 6px; flex-shrink: 0; margin-top: 2px; }
+.btn-delete, .btn-edit { padding: 3px 10px; border: none; border-radius: 4px; font-size: 0.72rem; font-weight: 600; cursor: pointer; transition: all 0.2s ease; line-height: 1.5; }
+.btn-delete { background: rgba(180, 40, 40, 0.65); color: #ffd5d5; }
+.btn-delete:hover { background: rgba(210, 40, 40, 1); color: #fff; transform: translateY(-1px); }
+.btn-edit { background: rgba(18, 83, 163, 0.8); color: #c8dcff; }
+.btn-edit:hover { background: rgba(18, 83, 163, 1); color: #fff; transform: translateY(-1px); }
+.subtitle-block-active .btn-edit { background: rgba(137, 41, 234, 0.75); color: #e8d5ff; }
+.subtitle-block-active .btn-edit:hover { background: rgba(137, 41, 234, 1); color: #fff; }
 
-.subtitle-block-active {
-  background: #3a4a5a !important;
-  box-shadow: 0 0 8px rgba(137, 41, 234, 0.6);
-  transform: scale(1.02);
-}
+.subtitle-separator { display: flex; align-items: center; gap: 6px; padding: 2px 4px; opacity: 0.25; transition: opacity 0.2s ease; }
+.subtitle-separator:hover { opacity: 1; }
+.separator-line { flex: 1; height: 1px; background: rgba(255, 255, 255, 0.12); }
+.separator-actions { display: flex; gap: 4px; flex-shrink: 0; }
+.btn-sep { padding: 1px 8px; font-size: 0.68rem; font-weight: 600; border: none; border-radius: 3px; cursor: pointer; line-height: 1.6; letter-spacing: 0.02em; transition: all 0.15s ease; white-space: nowrap; }
+.btn-add { background: rgba(18, 83, 163, 0.5); color: #c8dcff; border: 1px solid rgba(18, 83, 163, 0.7); }
+.btn-add:hover { background: rgba(18, 83, 163, 0.9); color: #fff; box-shadow: 0 2px 6px rgba(18, 83, 163, 0.4); }
+.btn-merge { background: rgba(137, 41, 234, 0.35); color: #d9b8ff; border: 1px solid rgba(137, 41, 234, 0.55); }
+.btn-merge:hover { background: rgba(137, 41, 234, 0.8); color: #fff; box-shadow: 0 2px 6px rgba(137, 41, 234, 0.4); }
 
-.timestamp { 
-  display: block; 
-  font-weight: bold; 
-  color: rgba(18, 83, 163, 0.918); 
-  font-size: 0.85rem; 
-  margin-bottom: 4px;
-  flex-shrink: 0;
-}
+.video-area { background-color: rgb(33, 32, 32); display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; overflow: hidden; }
+.video-box { width: 90%; height: 90%; max-height: 90%; position: relative; display: flex; align-items: center; justify-content: center; overflow: hidden; }
+.video-box video { width: 100%; height: 100%; max-width: 100%; max-height: 100%; display: block; object-fit: contain; }
 
-.subtitle-block-active .timestamp {
-  color: rgba(137, 41, 234, 0.6);
-}
+.subtitle-overlay { position: absolute; bottom: 35px; left: 50%; transform: translateX(-50%); max-width: 80%; text-align: center; pointer-events: none; z-index: 10; }
+.subtitle-text { display: inline-block; background: rgba(0, 0, 0, 0.8); color: #fff; padding: 8px 16px; border-radius: 4px; font-size: 0.9rem; line-height: 1.4; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.5); backdrop-filter: blur(4px); }
 
-.testo { 
-  margin: 0 0 6px 5px;
-  color: #fff; 
-  line-height: 1.4; 
-  font-size: 0.9rem;
-  word-break: break-word;
-}
+.timeline { background-color: #171819; overflow-x: auto; overflow-y: hidden; z-index: 1; }
+.zoomIcons { cursor: pointer; }
 
-.block-actions {
-  display: flex;
-  justify-content: flex-end;
-  gap: 6px;
-  flex-shrink: 0;
-  margin-top: 2px;
-}
+.modal-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0, 0, 0, 0.8); display: flex; align-items: center; justify-content: center; z-index: 1000; backdrop-filter: blur(4px); }
+.modal-content { background: #2a2d31; border-radius: 8px; width: 90%; max-width: 600px; box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5); }
+.modal-header { padding: 1.5rem; border-bottom: 1px solid #3a3d41; display: flex; justify-content: space-between; align-items: center; }
+.modal-header h4 { margin: 0; color: rgba(18, 83, 163, 0.918); }
+.btn-close { background: none; border: none; color: #fff; font-size: 2rem; cursor: pointer; line-height: 1; padding: 0; width: 30px; height: 30px; display: flex; align-items: center; justify-content: center; transition: all 0.2s ease; }
+.btn-close:hover { color: rgba(18, 83, 163, 0.918); transform: rotate(90deg); }
+.modal-body { padding: 1.5rem; }
+.form-group { margin-bottom: 1.5rem; }
+.form-group label { display: block; margin-bottom: 0.5rem; color: rgba(18, 83, 163, 0.918); font-weight: bold; font-size: 0.9rem; }
+.form-control { width: 100%; padding: 0.75rem; background: #1a1d21; border: 1px solid #3a3d41; border-radius: 4px; color: #fff; font-size: 0.9rem; font-family: inherit; transition: all 0.2s ease; }
+.form-control:focus { outline: none; border-color: rgba(18, 83, 163, 0.918); box-shadow: 0 0 0 3px rgba(18, 83, 163, 0.2); }
+textarea.form-control { resize: vertical; min-height: 100px; }
+.modal-footer { padding: 1.5rem; border-top: 1px solid #3a3d41; display: flex; justify-content: flex-end; gap: 1rem; }
+.btn { padding: 0.5rem 1.5rem; border: none; border-radius: 4px; font-size: 0.9rem; font-weight: bold; cursor: pointer; transition: all 0.2s ease; }
+.btn-secondary { background: #3a3d41; color: #fff; }
+.btn-secondary:hover { background: #4a4d51; }
+.btn-primary { background: rgba(18, 83, 163, 0.918); color: #fff; }
+.btn-primary:hover { background: rgba(18, 83, 163, 1); transform: translateY(-1px); box-shadow: 0 4px 8px rgba(18, 83, 163, 0.3); }
 
-.btn-delete,
-.btn-edit {
-  padding: 3px 10px;
-  border: none;
-  border-radius: 4px;
-  font-size: 0.72rem;
-  font-weight: 600;
-  cursor: pointer;
-  transition: all 0.2s ease;
-  line-height: 1.5;
-}
-
-.btn-delete {
-  background: rgba(180, 40, 40, 0.65);
-  color: #ffd5d5;
-}
-
-.btn-delete:hover {
-  background: rgba(210, 40, 40, 1);
-  color: #fff;
-  transform: translateY(-1px);
-}
-
-.btn-edit {
-  background: rgba(18, 83, 163, 0.8);
-  color: #c8dcff;
-}
-
-.btn-edit:hover {
-  background: rgba(18, 83, 163, 1);
-  color: #fff;
-  transform: translateY(-1px);
-}
-
-.subtitle-block-active .btn-edit {
-  background: rgba(137, 41, 234, 0.75);
-  color: #e8d5ff;
-}
-
-.subtitle-block-active .btn-edit:hover {
-  background: rgba(137, 41, 234, 1);
-  color: #fff;
-}
-
-.subtitle-separator {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 2px 4px;
-  opacity: 0.25;
-  transition: opacity 0.2s ease;
-}
-
-.subtitle-separator:hover {
-  opacity: 1;
-}
-
-.separator-line {
-  flex: 1;
-  height: 1px;
-  background: rgba(255, 255, 255, 0.12);
-}
-
-.separator-actions {
-  display: flex;
-  gap: 4px;
-  flex-shrink: 0;
-}
-
-.btn-sep {
-  padding: 1px 8px;
-  font-size: 0.68rem;
-  font-weight: 600;
-  border: none;
-  border-radius: 3px;
-  cursor: pointer;
-  line-height: 1.6;
-  letter-spacing: 0.02em;
-  transition: all 0.15s ease;
-  white-space: nowrap;
-}
-
-.btn-add {
-  background: rgba(18, 83, 163, 0.5);
-  color: #c8dcff;
-  border: 1px solid rgba(18, 83, 163, 0.7);
-}
-
-.btn-add:hover {
-  background: rgba(18, 83, 163, 0.9);
-  color: #fff;
-  box-shadow: 0 2px 6px rgba(18, 83, 163, 0.4);
-}
-
-.btn-merge {
-  background: rgba(137, 41, 234, 0.35);
-  color: #d9b8ff;
-  border: 1px solid rgba(137, 41, 234, 0.55);
-}
-
-.btn-merge:hover {
-  background: rgba(137, 41, 234, 0.8);
-  color: #fff;
-  box-shadow: 0 2px 6px rgba(137, 41, 234, 0.4);
-}
-
-.video-area { 
-  background-color: rgb(33, 32, 32); 
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  height: 100%;
-  overflow: hidden;  
-}
-
-.video-box { 
-  width: 90%;
-  height: 90%;       
-  max-height: 90%;
-  position: relative;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  overflow: hidden;
-}
-
-.video-box video { 
-  width: 100%;
-  height: 100%;
-  max-width: 100%;
-  max-height: 100%;
-  display: block; 
-  object-fit: contain; 
-}
-
-.subtitle-overlay {
-  position: absolute;
-  bottom: 35px;
-  left: 50%;
-  transform: translateX(-50%);
-  max-width: 80%;
-  text-align: center;
-  pointer-events: none;
-  z-index: 10;
-}
-
-.subtitle-text {
-  display: inline-block;
-  background: rgba(0, 0, 0, 0.8);
-  color: #fff;
-  padding: 8px 16px;
-  border-radius: 4px;
-  font-size: 0.9rem;
-  line-height: 1.4;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.5);
-  backdrop-filter: blur(4px);
-}
-
-.timeline { 
-  background-color: #171819; 
-  overflow-x: auto; 
-  overflow-y: hidden; 
-  z-index: 1; 
-}
-.zoomIcons { 
-  cursor: pointer; 
-}
-
-.modal-overlay {
+/* ── Modal bloccante drop video ─────────────────────────────────────────────── */
+.video-drop-overlay {
   position: fixed;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
-  background: rgba(0, 0, 0, 0.8);
+  inset: 0;
+  background: rgba(0, 0, 0, 0.92);
   display: flex;
   align-items: center;
   justify-content: center;
-  z-index: 1000;
-  backdrop-filter: blur(4px);
+  z-index: 9999;
+  backdrop-filter: blur(6px);
 }
 
-.modal-content {
-  background: #2a2d31;
-  border-radius: 8px;
+.video-drop-box {
+  background: #1e2128;
+  border: 1px solid #2d3748;
+  border-radius: 16px;
+  padding: 48px 40px;
+  max-width: 480px;
   width: 90%;
-  max-width: 600px;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
-}
-
-.modal-header {
-  padding: 1.5rem;
-  border-bottom: 1px solid #3a3d41;
+  text-align: center;
   display: flex;
-  justify-content: space-between;
+  flex-direction: column;
   align-items: center;
+  gap: 16px;
 }
 
-.modal-header h4 {
+.video-drop-icon { color: rgba(18, 83, 163, 0.918); }
+
+.video-drop-box h2 {
   margin: 0;
-  color: rgba(18, 83, 163, 0.918);
+  font-size: 1.5rem;
+  color: #f1f5f9;
+  font-weight: 700;
 }
 
-.btn-close {
-  background: none;
-  border: none;
-  color: #fff;
-  font-size: 2rem;
-  cursor: pointer;
-  line-height: 1;
-  padding: 0;
-  width: 30px;
-  height: 30px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: all 0.2s ease;
-}
-
-.btn-close:hover {
-  color: rgba(18, 83, 163, 0.918);
-  transform: rotate(90deg);
-}
-
-.modal-body {
-  padding: 1.5rem;
-}
-
-.form-group {
-  margin-bottom: 1.5rem;
-}
-
-.form-group label {
-  display: block;
-  margin-bottom: 0.5rem;
-  color: rgba(18, 83, 163, 0.918);
-  font-weight: bold;
+.video-drop-box p {
+  margin: 0;
   font-size: 0.9rem;
+  color: #64748b;
+  line-height: 1.6;
 }
 
-.form-control {
+.video-drop-zone {
   width: 100%;
-  padding: 0.75rem;
-  background: #1a1d21;
-  border: 1px solid #3a3d41;
-  border-radius: 4px;
-  color: #fff;
-  font-size: 0.9rem;
-  font-family: inherit;
-  transition: all 0.2s ease;
-}
-
-.form-control:focus {
-  outline: none;
-  border-color: rgba(18, 83, 163, 0.918);
-  box-shadow: 0 0 0 3px rgba(18, 83, 163, 0.2);
-}
-
-textarea.form-control {
-  resize: vertical;
-  min-height: 100px;
-}
-
-.modal-footer {
-  padding: 1.5rem;
-  border-top: 1px solid #3a3d41;
-  display: flex;
-  justify-content: flex-end;
-  gap: 1rem;
-}
-
-.btn {
-  padding: 0.5rem 1.5rem;
-  border: none;
-  border-radius: 4px;
-  font-size: 0.9rem;
-  font-weight: bold;
+  border: 2px dashed #2d3748;
+  border-radius: 12px;
+  padding: 36px 20px;
   cursor: pointer;
-  transition: all 0.2s ease;
+  transition: all 0.2s;
+  background: #0f1117;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  color: #475569;
+  margin-top: 8px;
 }
 
-.btn-secondary {
-  background: #3a3d41;
-  color: #fff;
+.video-drop-zone:hover {
+  border-color: rgba(18, 83, 163, 0.918);
+  background: rgba(18, 83, 163, 0.06);
+  color: #93c5fd;
 }
 
-.btn-secondary:hover {
-  background: #4a4d51;
+.video-drop-zone span {
+  font-size: 0.9rem;
+  font-weight: 500;
 }
 
-.btn-primary {
-  background: rgba(18, 83, 163, 0.918);
-  color: #fff;
-}
-
-.btn-primary:hover {
-  background: rgba(18, 83, 163, 1);
-  transform: translateY(-1px);
-  box-shadow: 0 4px 8px rgba(18, 83, 163, 0.3);
+.video-drop-error {
+  color: #f87171;
+  font-size: 0.85rem;
+  margin: 0;
 }
 </style>
