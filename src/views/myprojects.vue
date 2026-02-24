@@ -139,38 +139,32 @@ const openProjectDetail = async (project) => {
   }
 };
 
-const prepareEditProject = () => {
+
+const goToEditor = async () => {
   try {
     const parsedData = JSON.parse(selectedProject.value.data || '{}');
     tranSubtitles.value = parseSrtToArray(parsedData.srt1 || '');
     subtitles.value = parseSrtToArray(parsedData.srt2 || '');
+    localStorage.setItem('subtitles', JSON.stringify(subtitles.value));
+    localStorage.setItem('tranSubtitles', JSON.stringify(tranSubtitles.value));
+    console.log('selectedProject al push:', selectedProject.value)
+    localStorage.setItem('currentProjectId', selectedProject.value.id)
+    localStorage.setItem('currentProjectName', selectedProject.value.name)
+    localStorage.setItem('currentProjectUserId', selectedProject.value.user_id)
+    router.push({
+    name: 'video-player',
+    state: {
+    projectId: selectedProject.value.id,
+    projectName: selectedProject.value.name,
+    projectUserId: selectedProject.value.user_id,
+  }
+});
   } catch (err) {
     console.error('Error parsing SRT data:', err);
     tranSubtitles.value = [];
     subtitles.value = [];
   }
-
-  videoFile.value = null;
-  // NON chiude il modal — cambia solo il mode
-  projectModalMode.value = 'video';
-};
-
-const handleDrop = (event) => {
-  const files = event.dataTransfer.files;
-  if (files.length > 0 && files[0].type.startsWith('video/')) {
-    videoFile.value = files[0];
-  } else {
-    alert('Please drop a valid video file.');
-  }
-};
-
-const goToEditor = async () => {
-  localStorage.setItem('subtitles', JSON.stringify(subtitles.value));
-  localStorage.setItem('tranSubtitles', JSON.stringify(tranSubtitles.value));
-  router.push({
-    name: 'video-player',
-    state: { project: selectedProject.value }
-  });
+  
 };
 
 const closeProjectModal = () => {
@@ -573,35 +567,13 @@ onMounted(loadDashboard);
             >
               Delete Project
             </button>
-            <button @click="prepareEditProject" class="btn-primary">
+            <button @click="goToEditor" class="btn-primary">
               Edit Project
             </button>
           </div>
         </div>
 
-        <!-- VIDEO MODE — drop video + submit -->
-<div v-else-if="projectModalMode === 'video'" class="modal-body">
-  <p style="font-size:13px; color:#64748b; margin:0; line-height:1.5;">
-    The video is not stored on our servers. Drop the original file to continue editing.
-  </p>
 
-  <div
-    class="dropzone"
-    @dragover.prevent
-    @drop.prevent="handleDrop"
-    style="border: 2px dashed #2d3748; border-radius: 10px; padding: 32px 20px; text-align: center; cursor: pointer; background: #0f1117;"
-  >
-    <p v-if="!videoFile" style="color:#475569; margin:0;">Drop your video here</p>
-    <p v-else style="color:#e2e8f0; margin:0; font-weight:600;">{{ videoFile.name }}</p>
-  </div>
-
-  <div class="modal-footer">
-    <button @click="projectModalMode = 'view'" class="btn-secondary">← Back</button>
-    <button @click="goToEditor" :disabled="!videoFile" class="btn-primary">
-      Open in Editor
-    </button>
-  </div>
-</div>
 
 <!-- EDIT MODE — rinomina progetto -->
 <div v-else-if="projectModalMode === 'edit'" class="modal-body">

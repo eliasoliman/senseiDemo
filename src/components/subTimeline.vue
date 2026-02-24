@@ -33,7 +33,7 @@ const snapshotSaved = ref(false)
 
 const activeSidebarTrack = ref('tran')
 
-const MIN_SUBTITLE_DURATION = 0.2
+const MIN_SUBTITLE_DURATION = 0.5
 
 const onSubtitleSelect = inject('onSubtitleSelect', null)
 const saveUndoSnapshot = inject('saveUndoSnapshot', null)

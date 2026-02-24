@@ -8,6 +8,10 @@ const router = useRouter()
 const videoUrl = ref('')
 const videoFile = ref(null)
 
+// ─── Progetto corrente (letto da history.state al mount) ─────────────────────
+const currentProject = ref(null)
+const isSaving = ref(false)
+
 // Modal bloccante per il drop del video (quando si arriva da myprojects)
 const showVideoDropModal = ref(false)
 const videoDropError = ref('')
@@ -366,6 +370,24 @@ const saveEdit = () => {
   }
 }
 
+// ─── Back con conferma salvataggio ───────────────────────────────────────────
+const showBackConfirm = ref(false)
+
+const handleBack = () => {
+  showBackConfirm.value = true
+}
+
+const confirmBackSave = async () => {
+  await handleSave()
+  showBackConfirm.value = false
+  router.push('/myprojects')
+}
+
+const confirmBackNoSave = () => {
+  showBackConfirm.value = false
+  router.push('/myprojects')
+}
+
 const handleKeydown = (e) => {
   if ((e.ctrlKey || e.metaKey) && e.key === 'z') {
     e.preventDefault()
@@ -373,9 +395,49 @@ const handleKeydown = (e) => {
   }
 }
 
-const handleSave = () => {
-  // TODO: logica di salvataggio
+// ─── Ricostruisce SRT string da array ────────────────────────────────────────
+const arrayToSrt = (arr) => {
+  return arr.map((sub, i) => `${i + 1}\n${sub.timestamp}\n${sub.testo}`).join('\n\n')
 }
+
+// ─── Salvataggio su API ───────────────────────────────────────────────────────
+const handleSave = async () => {
+  if (!currentProject.value) {
+    console.warn('handleSave: nessun progetto corrente')
+    return
+  }
+  if (isSaving.value) return
+  isSaving.value = true
+
+  const srt1 = arrayToSrt(tranSubtitles.value)
+  const srt2 = arrayToSrt(subtitles.value)
+
+  try {
+    const res = await fetch(
+      `https://api.matita.net/subtitles-admin/projects/${currentProject.value.id}`,
+      {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('subtitles_token')}`
+        },
+        body: JSON.stringify({
+          name: currentProject.value.name,
+          data: JSON.stringify({ srt1, srt2, playhead: 0 })
+        })
+      }
+    )
+    if (!res.ok) throw new Error(`HTTP ${res.status}`)
+    console.log('Saved successfully')
+  } catch (err) {
+    console.error('Save error:', err)
+  } finally {
+    isSaving.value = false
+  }
+}
+
+// ─── Autosave interval ────────────────────────────────────────────────────────
+let autosaveInterval = null
 
 watch(currentTime, () => {
   scrollSidebarToActive()
@@ -423,6 +485,16 @@ onMounted(() => {
   const storedTran = localStorage.getItem('tranSubtitles')
   if (storedTran) tranSubtitles.value = JSON.parse(storedTran)
 
+  // Leggi il progetto dallo state del router (passato da myprojects.vue)
+  const projectId = localStorage.getItem('currentProjectId')
+  if (projectId) {
+  currentProject.value = {
+    id: parseInt(projectId),
+    name: localStorage.getItem('currentProjectName'),
+    user_id: parseInt(localStorage.getItem('currentProjectUserId'))
+  }
+}
+
   // Controlla se il video è già disponibile (caso Form.vue — stesso processo JS)
   const file = history.state?.videoFile || null
   if (file) {
@@ -434,11 +506,15 @@ onMounted(() => {
     showVideoDropModal.value = true
   }
 
+  // Autosave ogni 5 minuti
+  autosaveInterval = setInterval(handleSave, 5 * 60 * 1000)
+
   window.addEventListener('keydown', handleKeydown)
 })
 
 onUnmounted(() => {
   if (videoUrl.value) URL.revokeObjectURL(videoUrl.value)
+  if (autosaveInterval) clearInterval(autosaveInterval)
   window.removeEventListener('keydown', handleKeydown)
 })
 
@@ -481,12 +557,19 @@ watch(videoPlayer, (newPlayer) => {
     <header class="header fixed-top p-3 d-flex justify-content-between align-items-center">
       <h3 class="mb-0">Sensei</h3>
       <nav class="nav">
-        <button class="btn-save" @click="handleSave">
+        <button class="btn-save" @click="handleSave" :disabled="isSaving">
           <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" fill="currentColor" viewBox="0 0 16 16">
             <path d="M2 1a1 1 0 0 0-1 1v12a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V2a1 1 0 0 0-1-1H9.5a1 1 0 0 0-1 1v7.293l2.646-2.647a.5.5 0 0 1 .708.708l-3.5 3.5a.5.5 0 0 1-.708 0l-3.5-3.5a.5.5 0 1 1 .708-.708L7.5 9.293V2a2 2 0 0 1 2-2H14a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2V2a2 2 0 0 1 2-2h2.5a.5.5 0 0 1 0 1z"/>
           </svg>
-          Save
+          {{ isSaving ? 'Saving...' : 'Save' }}
         </button>
+
+        <button class="btn-back" @click="handleBack">
+        <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" fill="currentColor" viewBox="0 0 16 16">
+          <path fill-rule="evenodd" d="M15 8a.5.5 0 0 0-.5-.5H2.707l3.147-3.146a.5.5 0 1 0-.708-.708l-4 4a.5.5 0 0 0 0 .708l4 4a.5.5 0 0 0 .708-.708L2.707 8.5H14.5A.5.5 0 0 0 15 8z"/>
+        </svg>
+        Back
+      </button>
       </nav>
     </header>
 
@@ -531,6 +614,24 @@ watch(videoPlayer, (newPlayer) => {
                 </div>
                 <div class="separator-line"></div>
               </div>
+
+        <!-- Modal conferma back -->
+      <div v-if="showBackConfirm" class="modal-overlay">
+        <div class="modal-content" style="max-width:380px; text-align:center;">
+          <div class="modal-body" style="padding:2rem;">
+            <h4 style="margin:0 0 12px 0; color:#f1f5f9;">Save before leaving?</h4>
+            <p style="color:#64748b; font-size:0.9rem; margin:0 0 24px 0;">
+              Do you want to save your changes before going back?
+            </p>
+            <div style="display:flex; gap:12px; justify-content:center;">
+              <button class="btn btn-secondary" @click="confirmBackNoSave">Leave without saving</button>
+              <button class="btn btn-primary" @click="confirmBackSave" :disabled="isSaving">
+                {{ isSaving ? 'Saving...' : 'Save & Leave' }}
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
             
     <!-- MODAL BLOCCANTE DROP VIDEO — non chiudibile -->
     <div v-if="showVideoDropModal" class="video-drop-overlay">
@@ -852,4 +953,21 @@ textarea.form-control { resize: vertical; min-height: 100px; }
   font-size: 0.85rem;
   margin: 0;
 }
+
+.btn-back {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 18px;
+  background: transparent;
+  color: #94a3b8;
+  border: 1px solid #2d3748;
+  border-radius: 5px;
+  font-weight: 700;
+  font-size: 0.9rem;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  letter-spacing: 0.03em;
+}
+.btn-back:hover { border-color: #4a5568; color: #e2e8f0; }
 </style>
