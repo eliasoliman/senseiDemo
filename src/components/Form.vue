@@ -12,12 +12,31 @@
         <p v-if="!videoFile">Drop your video source here</p>
         <p v-else>Selected file: {{ videoFile.name }}</p>
       </div>
+        <div v-if="isAzureMode">
+          <p>Source language</p>
+          <select class="form-select mb-3" v-model="sourceLanguage">
+            <option value="">Select source language</option>
+            <option value="de">German</option>
+            <option value="el">Greek</option>
+            <option value="en">English</option>
+            <option value="es">Spanish</option>
+            <option value="it">Italian</option>
+            <option value="nl">Dutch</option>
+            <option value="ro">Romanian</option>
+            <option value="sl">Slovenian</option>
+          </select>
+        </div>
       <p>Target language</p>
       <select class="form-select mb-3" v-model="targetLanguage">
         <option value="">Select the language</option>
-        <option value="en">English</option>
-        <option value="it">Italian</option>
-        <option value="fr">French</option>
+        <<option value="de">German</option>
+            <option value="el">Greek</option>
+            <option value="en">English</option>
+            <option value="es">Spanish</option>
+            <option value="it">Italian</option>
+            <option value="nl">Dutch</option>
+            <option value="ro">Romanian</option>
+            <option value="sl">Slovenian</option>
       </select>
       <button class="btn btn-lg btn-light fw-bold" @click="handleCreate">Create</button>
     </div>
@@ -51,7 +70,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, computed } from 'vue'
 import axios from 'axios'
 import { useRouter } from 'vue-router'
 
@@ -72,6 +91,10 @@ let tranSubtitles = []
 
 const transcribingProgress = ref(0)
 const translatingProgress = ref(0)
+
+const sourceLanguage = ref('')
+const envValue = import.meta.env.VITE_REQUIRE_SOURCE_LANG
+const isAzureMode = computed(() => envValue === 'true')
 
 // Leggiamo i dati dal file .env (i nomi devono essere IDENTICI al file)
 const WHISPER_BASE = import.meta.env.VITE_WHISPER_BASE;
@@ -159,15 +182,21 @@ async function createProject() {
     const formData = new FormData();
     formData.append('file', videoFile.value);
 
-    const conversionJob = await axios.post(apiConversionPost, formData, {
-      headers: {
-        'Authorization': tokenBearer,
-        'Content-Type': 'multipart/form-data'
-      },
-      params: {
-        translate_to: targetLanguage.value
+    const params = {};
+      if (targetLanguage.value) {
+        params.translate_to = targetLanguage.value;
       }
-    });
+      if (isAzureMode) {
+        params.source = sourceLanguage.value;
+      }
+
+      const conversionJob = await axios.post(apiConversionPost, formData, {
+        headers: {
+          'Authorization': tokenBearer,
+          'Content-Type': 'multipart/form-data'
+        },
+        params
+      });
 
     const jobId = conversionJob.data.id;
 
