@@ -244,6 +244,20 @@ const activeSubtitleText = computed(() => {
   return ''
 })
 
+const handleExport = () => {
+  const downloadSrt = (content, filename) => {
+    const blob = new Blob([content], { type: 'text/plain;charset=utf-8' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = filename
+    a.click()
+    URL.revokeObjectURL(url)
+  }
+
+  downloadSrt(arrayToSrt(tranSubtitles.value), 'srt_translated.srt')
+  downloadSrt(arrayToSrt(subtitles.value), 'srt_original.srt')
+}
 const scrollSidebarToActive = () => {
   if (!subtitlesScroll.value || !isPlaying.value) return
   
@@ -658,6 +672,15 @@ watch(videoPlayer, (newPlayer) => {
           </svg>
           Back
         </button>
+        
+        <button class="btn-export" @click="handleExport">
+        <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" fill="currentColor" viewBox="0 0 16 16">
+          <path d="M.5 9.9a.5.5 0 0 1 .5.5v2.5a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-2.5a.5.5 0 0 1 1 0v2.5a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2v-2.5a.5.5 0 0 1 .5-.5z"/>
+          <path d="M7.646 11.854a.5.5 0 0 0 .708 0l3-3a.5.5 0 0 0-.708-.708L8.5 10.293V1.5a.5.5 0 0 0-1 0v8.793L5.354 8.146a.5.5 0 1 0-.708.708l3 3z"/>
+        </svg>
+        Export SRT
+      </button>
+
       </nav>
     </header>
 
@@ -866,7 +889,7 @@ watch(videoPlayer, (newPlayer) => {
   overflow: hidden; 
 }
 .header { grid-area: header; background-color: #212529; height: 50px; }
-h3 { color: rgba(18, 83, 163, 0.918); }
+h3 { color: rgba(31, 125, 240, 0.918); }
 .nav { display: flex; gap: 1rem; }
 
 .btn-save {
@@ -874,7 +897,7 @@ h3 { color: rgba(18, 83, 163, 0.918); }
   align-items: center;
   gap: 6px;
   padding: 6px 18px;
-  background: rgba(18, 83, 163, 0.85);
+  background: rgba(31, 125, 240, 0.85);
   color: #fff;
   border: none;
   border-radius: 5px;
@@ -884,7 +907,7 @@ h3 { color: rgba(18, 83, 163, 0.918); }
   transition: all 0.2s ease;
   letter-spacing: 0.03em;
 }
-.btn-save:hover { background: rgba(18, 83, 163, 1); transform: translateY(-1px); box-shadow: 0 4px 10px rgba(18, 83, 163, 0.4); }
+.btn-save:hover { background: rgba(31, 125, 240, 1); transform: translateY(-1px); box-shadow: 0 4px 10px rgba(31, 125, 240, 0.4); }
 .btn-save:active { transform: translateY(0); }
 
 .container { 
@@ -957,21 +980,44 @@ h3 { color: rgba(18, 83, 163, 0.918); }
   color: #ff4d4d;
 }
 
-.badge-tran { color: rgba(18, 83, 163, 0.918); background: rgba(18, 83, 163, 0.12); }
+.btn-export {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 18px;
+  background: rgba(0, 170, 140, 0.2);
+  color: #00cc99;
+  border: 1px solid rgba(0, 170, 140, 0.4);
+  border-radius: 5px;
+  font-weight: 700;
+  font-size: 0.9rem;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  letter-spacing: 0.03em;
+}
+.btn-export:hover {
+  background: rgba(0, 170, 140, 0.4);
+  color: #fff;
+  border-color: #00cc99;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 10px rgba(0, 170, 140, 0.3);
+}
+
+.badge-tran { color: rgba(31, 125, 240, 0.918); background: rgba(31, 125, 240, 0.12); }
 .badge-orig { color: #00cc99; background: rgba(0, 170, 140, 0.12); }
 
 .subtitles-scroll { flex: 1; overflow-y: auto; overflow-x: hidden; padding-right: 0.5rem; min-height: 0; scroll-behavior: smooth; }
 
 .subtitle-block { 
   display: flex; flex-direction: column; padding: 0.3px; margin-bottom: 0;
-  background: #2a2d31; border-left: 4px solid rgba(18, 83, 163, 0.918); 
+  background: #2a2d31; border-left: 4px solid rgba(31, 125, 240, 0.918); 
   border-radius: 4px; transition: all 0.3s ease; cursor: pointer;
 }
 .badge-orig ~ .subtitles-scroll .subtitle-block { border-left-color: #00aa8c; }
 .subtitle-block:hover { background: #353841; }
 .subtitle-block-active { background: #3a4a5a !important; box-shadow: 0 0 8px rgba(137, 41, 234, 0.6); transform: scale(1.02); }
 
-.timestamp { display: block; font-weight: bold; color: rgba(18, 83, 163, 0.918); font-size: 0.85rem; margin-bottom: 4px; margin-left: 5px; flex-shrink: 0; }
+.timestamp { display: block; font-weight: bold; color: rgba(31, 125, 240, 0.918); font-size: 0.85rem; margin-bottom: 4px; margin-left: 5px; flex-shrink: 0; }
 .subtitle-block-active .timestamp { color: rgba(137, 41, 234, 0.6); }
 .testo { margin: 0 0 6px 5px; color: #fff; line-height: 1.4; font-size: 0.9rem; word-break: break-word; }
 
@@ -979,8 +1025,8 @@ h3 { color: rgba(18, 83, 163, 0.918); }
 .btn-delete, .btn-edit { padding: 3px 10px; border: none; border-radius: 4px; font-size: 0.72rem; font-weight: 600; cursor: pointer; transition: all 0.2s ease; line-height: 1.5; }
 .btn-delete { background: rgba(180, 40, 40, 0.65); color: #ffd5d5; }
 .btn-delete:hover { background: rgba(210, 40, 40, 1); color: #fff; transform: translateY(-1px); }
-.btn-edit { background: rgba(18, 83, 163, 0.8); color: #c8dcff; }
-.btn-edit:hover { background: rgba(18, 83, 163, 1); color: #fff; transform: translateY(-1px); }
+.btn-edit { background: rgba(31, 125, 240, 0.918); color: #c8dcff; }
+.btn-edit:hover { background: rgba(31, 125, 240, 1); color: #fff; transform: translateY(-1px); }
 .subtitle-block-active .btn-edit { background: rgba(137, 41, 234, 0.75); color: #e8d5ff; }
 .subtitle-block-active .btn-edit:hover { background: rgba(137, 41, 234, 1); color: #fff; }
 
@@ -989,8 +1035,8 @@ h3 { color: rgba(18, 83, 163, 0.918); }
 .separator-line { flex: 1; height: 1px; background: rgba(255, 255, 255, 0.12); }
 .separator-actions { display: flex; gap: 4px; flex-shrink: 0; }
 .btn-sep { padding: 1px 8px; font-size: 0.68rem; font-weight: 600; border: none; border-radius: 3px; cursor: pointer; line-height: 1.6; letter-spacing: 0.02em; transition: all 0.15s ease; white-space: nowrap; }
-.btn-add { background: rgba(18, 83, 163, 0.5); color: #c8dcff; border: 1px solid rgba(18, 83, 163, 0.7); }
-.btn-add:hover { background: rgba(18, 83, 163, 0.9); color: #fff; box-shadow: 0 2px 6px rgba(18, 83, 163, 0.4); }
+.btn-add { background: rgba(31, 125, 240, 0.5); color: #c8dcff; border: 1px solid rgba(31, 125, 240, 0.918); }
+.btn-add:hover { background: rgba(31, 125, 240, 0.9); color: #fff; box-shadow: 0 2px 6px rgba(31, 125, 240, 0.4); }
 .btn-merge { background: rgba(137, 41, 234, 0.35); color: #d9b8ff; border: 1px solid rgba(137, 41, 234, 0.55); }
 .btn-merge:hover { background: rgba(137, 41, 234, 0.8); color: #fff; box-shadow: 0 2px 6px rgba(137, 41, 234, 0.4); }
 
@@ -1007,21 +1053,21 @@ h3 { color: rgba(18, 83, 163, 0.918); }
 .modal-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0, 0, 0, 0.8); display: flex; align-items: center; justify-content: center; z-index: 1000; backdrop-filter: blur(4px); }
 .modal-content { background: #2a2d31; border-radius: 8px; width: 90%; max-width: 600px; box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5); }
 .modal-header { padding: 1.5rem; border-bottom: 1px solid #3a3d41; display: flex; justify-content: space-between; align-items: center; }
-.modal-header h4 { margin: 0; color: rgba(18, 83, 163, 0.918); }
+.modal-header h4 { margin: 0; color: rgba(31, 125, 240, 0.918); }
 .btn-close { background: none; border: none; color: #fff; font-size: 2rem; cursor: pointer; line-height: 1; padding: 0; width: 30px; height: 30px; display: flex; align-items: center; justify-content: center; transition: all 0.2s ease; }
-.btn-close:hover { color: rgba(18, 83, 163, 0.918); transform: rotate(90deg); }
+.btn-close:hover { color: rgba(31, 125, 240, 0.918); transform: rotate(90deg); }
 .modal-body { padding: 1.5rem; }
 .form-group { margin-bottom: 1.5rem; }
-.form-group label { display: block; margin-bottom: 0.5rem; color: rgba(18, 83, 163, 0.918); font-weight: bold; font-size: 0.9rem; }
+.form-group label { display: block; margin-bottom: 0.5rem; color: rgba(31, 125, 240, 0.918); font-weight: bold; font-size: 0.9rem; }
 .form-control { width: 100%; padding: 0.75rem; background: #1a1d21; border: 1px solid #3a3d41; border-radius: 4px; color: #fff; font-size: 0.9rem; font-family: inherit; transition: all 0.2s ease; }
-.form-control:focus { outline: none; border-color: rgba(18, 83, 163, 0.918); box-shadow: 0 0 0 3px rgba(18, 83, 163, 0.2); }
+.form-control:focus { outline: none; border-color: rgba(31, 125, 240, 0.918); box-shadow: 0 0 0 3px rgba(31, 125, 240, 0.2); }
 textarea.form-control { resize: vertical; min-height: 100px; }
 .modal-footer { padding: 1.5rem; border-top: 1px solid #3a3d41; display: flex; justify-content: flex-end; gap: 1rem; }
 .btn { padding: 0.5rem 1.5rem; border: none; border-radius: 4px; font-size: 0.9rem; font-weight: bold; cursor: pointer; transition: all 0.2s ease; }
 .btn-secondary { background: #3a3d41; color: #fff; }
 .btn-secondary:hover { background: #4a4d51; }
-.btn-primary { background: rgba(18, 83, 163, 0.918); color: #fff; }
-.btn-primary:hover { background: rgba(18, 83, 163, 1); transform: translateY(-1px); box-shadow: 0 4px 8px rgba(18, 83, 163, 0.3); }
+.btn-primary { background: rgba(31, 125, 240, 0.918); color: #fff; }
+.btn-primary:hover { background: rgba(31, 125, 240, 1); transform: translateY(-1px); box-shadow: 0 4px 8px rgba(31, 125, 240, 0.3); }
 
 /* ── Modal bloccante drop video ─────────────────────────────────────────────── */
 .video-drop-overlay {
@@ -1049,7 +1095,7 @@ textarea.form-control { resize: vertical; min-height: 100px; }
   gap: 16px;
 }
 
-.video-drop-icon { color: rgba(18, 83, 163, 0.918); }
+.video-drop-icon { color: rgba(31, 125, 240, 0.918); }
 
 .video-drop-box h2 {
   margin: 0;
@@ -1082,8 +1128,8 @@ textarea.form-control { resize: vertical; min-height: 100px; }
 }
 
 .video-drop-zone:hover {
-  border-color: rgba(18, 83, 163, 0.918);
-  background: rgba(18, 83, 163, 0.06);
+  border-color: rgba(31, 125, 240, 0.918);
+  background: rgba(31, 125, 240, 0.06);
   color: #93c5fd;
 }
 
