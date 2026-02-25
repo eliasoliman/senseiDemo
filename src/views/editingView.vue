@@ -15,7 +15,7 @@ const isSaving = ref(false)
 // ─── Back con conferma salvataggio ───────────────────────────────────────────
 const showBackConfirm = ref(false)
 
-// Modal bloccante per il drop del video (quando si arriva da myprojects)
+// Modal bloccante per il drop del video
 const showVideoDropModal = ref(false)
 const videoDropError = ref('')
 const subtitles = ref([])
@@ -31,10 +31,45 @@ const subtitlesScroll = ref(null)
 const selectedSubtitleIndex = ref(-1)
 const isPlayingSelectedSubtitle = ref(false)
 
+// --- FIX 1: RECUPERO NOME VIDEO CON PARSING RICORSIVO ---
+const expectedVideoName = computed(() => {
+  if (!currentProject.value) return '';
+
+  let d = currentProject.value.data;
+  if (!d) return '';
+
+  // Parsing ricorsivo sicuro
+  try {
+    while (typeof d === 'string') {
+      d = JSON.parse(d);
+    }
+  } catch (e) {
+    return '';
+  }
+
+  // Cerca videoName a qualsiasi livello di annidamento
+  return d.videoName || (d.data && d.data.videoName) || '';
+});
+
+// --- FIX 2: WATCHER PER PULIRE I DATI APPENA ARRIVANO ---
+watch(currentProject, (newVal) => {
+  if (newVal && newVal.data && typeof newVal.data === 'string') {
+    try {
+      let d = newVal.data;
+      while (typeof d === 'string' && d.startsWith('{')) { 
+        d = JSON.parse(d); 
+      }
+      // Assegnazione reattiva pulita
+      currentProject.value = { ...newVal, data: d };
+    } catch (e) {
+      console.warn("Errore parsing watcher dati", e);
+    }
+  }
+}, { immediate: true, deep: true });
+
 // Which track is shown in the sidebar: 'tran' (Track 1) or 'orig' (Track 2)
 const activeSidebarTrack = ref('tran')
 
-// The array currently shown in the sidebar
 const sidebarSubtitles = computed(() =>
   activeSidebarTrack.value === 'tran' ? tranSubtitles.value : subtitles.value
 )
@@ -383,6 +418,7 @@ const clearProjectStorage = () => {
   localStorage.removeItem('currentProjectId')
   localStorage.removeItem('currentProjectName')
   localStorage.removeItem('currentProjectUserId')
+  localStorage.removeItem('currentProjectBackup')
 }
 
 const confirmBackSave = async () => {
@@ -405,49 +441,75 @@ const handleKeydown = (e) => {
   }
 }
 
-// ─── Ricostruisce SRT string da array ────────────────────────────────────────
 const arrayToSrt = (arr) => {
   return arr.map((sub, i) => `${i + 1}\n${sub.timestamp}\n${sub.testo}`).join('\n\n')
 }
 
-// ─── Salvataggio su API ───────────────────────────────────────────────────────
 const handleSave = async () => {
-  if (!currentProject.value) {
-    console.warn('handleSave: nessun progetto corrente')
-    return
+  if (!currentProject.value || !currentProject.value.id) {
+    console.warn('handleSave: nessun progetto o ID mancante');
+    return;
   }
-  if (isSaving.value) return
-  isSaving.value = true
 
-  const srt1 = arrayToSrt(tranSubtitles.value)
-  const srt2 = arrayToSrt(subtitles.value)
+  if (isSaving.value) return;
+  isSaving.value = true;
+
+  const srt1 = arrayToSrt(tranSubtitles.value);
+  const srt2 = arrayToSrt(subtitles.value);
 
   try {
+    const currentToken = localStorage.getItem('subtitles_token');
+    if (!currentToken) return;
+
+    // Recuperiamo il videoName corrente per non perderlo
+    let currentData = {};
+    try {
+      let d = currentProject.value.data;
+      while (typeof d === 'string') { d = JSON.parse(d); }
+      currentData = d;
+    } catch (e) { currentData = {}; }
+
     const res = await fetch(
       `https://api.matita.net/subtitles-admin/projects/${currentProject.value.id}`,
       {
         method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('subtitles_token')}`
+          'Authorization': `Bearer ${currentToken}`
         },
         body: JSON.stringify({
           name: currentProject.value.name,
-          data: JSON.stringify({ srt1, srt2, playhead: 0 }),
-          user_id: currentProject.value.user_id
+          data: JSON.stringify({ 
+            ...currentData,
+            srt1, 
+            srt2, 
+            playhead: 0 
+          })
         })
       }
-    )
-    if (!res.ok) throw new Error(`HTTP ${res.status}`)
-    console.log('Saved successfully')
+    );
+
+    if (res.status === 401) {
+      localStorage.removeItem('subtitles_token');
+      router.push('/login');
+      return;
+    }
+
+    if (!res.ok) {
+      throw new Error(`HTTP ${res.status}`);
+    }
+
+    const refreshedToken = res.headers.get('x-refresh-token');
+    if (refreshedToken) {
+      localStorage.setItem('subtitles_token', refreshedToken);
+    }
   } catch (err) {
-    console.error('Save error:', err)
+    console.error('Save error:', err);
   } finally {
-    isSaving.value = false
+    isSaving.value = false;
   }
 }
 
-// ─── Autosave interval ────────────────────────────────────────────────────────
 let autosaveInterval = null
 
 watch(currentTime, () => {
@@ -458,29 +520,36 @@ watch(activeSidebarTrack, () => {
   selectedSubtitleIndex.value = -1
 })
 
-// ─── Carica il video droppato nel modal bloccante ────────────────────────────
+// --- FIX 3: CARICAMENTO VIDEO CON CONTROLLO RIGIDO ---
 const handleVideoDropModal = (event) => {
   const files = event.dataTransfer.files
-  if (files.length > 0 && files[0].type.startsWith('video/')) {
+  if (files.length > 0) {
     loadVideoFile(files[0])
-  } else {
-    videoDropError.value = 'Please drop a valid video file.'
   }
 }
 
 const handleVideoSelectModal = (event) => {
   const file = event.target.files[0]
-  if (file && file.type.startsWith('video/')) {
+  if (file) {
     loadVideoFile(file)
-  } else {
-    videoDropError.value = 'Please select a valid video file.'
   }
 }
 
 const loadVideoFile = (file) => {
+  videoDropError.value = '';
+  
+  // VALIDAZIONE NOME FILE
+  if (expectedVideoName.value && file.name !== expectedVideoName.value) {
+    videoDropError.value = `Errore: il file selezionato (${file.name}) non corrisponde al video originale del progetto: "${expectedVideoName.value}".`;
+    return;
+  }
+
+   console.log('expectedVideoName:', expectedVideoName.value);
+  console.log('file.name:', file.name);
+  console.log('currentProject:', JSON.stringify(currentProject.value));
+
   videoFile.value = file
   videoUrl.value = URL.createObjectURL(file)
-  videoDropError.value = ''
   showVideoDropModal.value = false
   nextTick(() => {
     setupVideoSync()
@@ -488,31 +557,50 @@ const loadVideoFile = (file) => {
 }
 
 onMounted(() => {
-  // Leggi i sottotitoli da localStorage
-  // (scritti sia da Form.vue che da myprojects.vue prima del push)
   const stored = localStorage.getItem('subtitles')
   if (stored) subtitles.value = JSON.parse(stored)
-
   const storedTran = localStorage.getItem('tranSubtitles')
   if (storedTran) tranSubtitles.value = JSON.parse(storedTran)
 
-  // Leggi il progetto dallo state del router (passato da myprojects.vue)
-  currentProject.value = history.state?.project || null
+  const projectFromState = history.state?.project
+  const backupId = localStorage.getItem('currentProjectId')
 
-  // Controlla se il video è già disponibile (caso Form.vue — stesso processo JS)
+  if (projectFromState) {
+    // Prima di assegnare, forziamo il parsing se data è una stringa
+    let cleanData = projectFromState.data;
+    try {
+      while (typeof cleanData === 'string' && cleanData.trim().startsWith('{')) {
+        cleanData = JSON.parse(cleanData);
+      }
+    } catch (e) {
+      console.error("Errore parsing dati in onMounted", e);
+    }
+
+    // Assegniamo l'oggetto pulito
+    currentProject.value = { ...projectFromState, data: cleanData };
+    
+    localStorage.setItem('currentProjectBackup', JSON.stringify(currentProject.value))
+    localStorage.setItem('currentProjectId', projectFromState.id)
+    localStorage.setItem('currentProjectName', projectFromState.name)
+    
+    console.log("Progetto caricato correttamente:", currentProject.value);
+  }else if (backupId) {
+    const fullBackup = localStorage.getItem('currentProjectBackup')
+    if (fullBackup) {
+       currentProject.value = JSON.parse(fullBackup)
+    }
+  }
+
   const file = history.state?.videoFile || null
   if (file) {
     videoFile.value = file
     videoUrl.value = URL.createObjectURL(file)
     nextTick(() => { setupVideoSync() })
   } else {
-    // Nessun video trovato — mostra modal bloccante per il drop
     showVideoDropModal.value = true
   }
 
-  // Autosave ogni 5 minuti
   autosaveInterval = setInterval(handleSave, 5 * 60 * 1000)
-
   window.addEventListener('keydown', handleKeydown)
 })
 
@@ -533,10 +621,6 @@ const togglePlay = () => {
   if (videoPlayer.value) {
     videoPlayer.value.paused ? videoPlayer.value.play() : videoPlayer.value.pause()
   }
-}
-
-const endVideo = () => {
-  if (videoPlayer.value) videoPlayer.value.currentTime = videoPlayer.value.duration
 }
 
 const zoomOut = () => {
@@ -705,31 +789,51 @@ watch(videoPlayer, (newPlayer) => {
   </div>
     <!-- MODAL BLOCCANTE DROP VIDEO — non chiudibile -->
     <div v-if="showVideoDropModal" class="video-drop-overlay">
-      <div class="video-drop-box">
-        <div class="video-drop-icon">
-          <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" fill="currentColor" viewBox="0 0 16 16">
-            <path d="M6.79 5.093A.5.5 0 0 0 6 5.5v5a.5.5 0 0 0 .79.407l3.5-2.5a.5.5 0 0 0 0-.814l-3.5-2.5z"/>
-            <path d="M0 4a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2V4zm15 0a1 1 0 0 0-1-1H2a1 1 0 0 0-1 1v8a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V4z"/>
-          </svg>
-        </div>
-        <h2>Load your video</h2>
-        <p>The video file is not stored on our servers.<br>Drop the original file to start editing.</p>
-        <div
-          class="video-drop-zone"
-          @dragover.prevent
-          @drop.prevent="handleVideoDropModal"
-          @click="$refs.videoDropInput.click()"
-        >
-          <input ref="videoDropInput" type="file" accept="video/*" style="display:none" @change="handleVideoSelectModal" />
-          <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" fill="currentColor" viewBox="0 0 16 16">
-            <path d="M.5 9.9a.5.5 0 0 1 .5.5v2.5a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-2.5a.5.5 0 0 1 1 0v2.5a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2v-2.5a.5.5 0 0 1 .5-.5z"/>
-            <path d="M7.646 1.146a.5.5 0 0 1 .708 0l3 3a.5.5 0 0 1-.708.708L8.5 2.707V11.5a.5.5 0 0 1-1 0V2.707L5.354 4.854a.5.5 0 1 1-.708-.708l3-3z"/>
-          </svg>
-          <span>Drop video here or click to browse</span>
-        </div>
-        <p v-if="videoDropError" class="video-drop-error">{{ videoDropError }}</p>
+  <div class="video-drop-box">
+    <div class="video-drop-icon">
+      <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" fill="currentColor" viewBox="0 0 16 16">
+        <path d="M6.79 5.093A.5.5 0 0 0 6 5.5v5a.5.5 0 0 0 .79.407l3.5-2.5a.5.5 0 0 0 0-.814l-3.5-2.5z"/>
+        <path d="M0 4a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2V4zm15 0a1 1 0 0 0-1-1H2a1 1 0 0 0-1 1v8a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V4z"/>
+      </svg>
+    </div>
+    
+    <h2>Load your video</h2>
+    <p>The video file is not stored on our servers.<br>Drop the original file to start editing.</p>
+
+    <div v-if="expectedVideoName" class="expected-file-box">
+      <small>Expected file:</small>
+      <div class="file-name-badge">
+        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" fill="currentColor" viewBox="0 0 16 16" style="margin-right: 6px;">
+          <path d="M9.293 0H4a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2V4.707A1 1 0 0 0 13.707 4L10 .293A1 1 0 0 0 9.293 0zM9.5 3.5v-2l3 3h-2a1 1 0 0 1-1-1zM11 8H5a.5.5 0 0 1 0-1h6a.5.5 0 0 1 0 1zm0 2H5a.5.5 0 0 1 0-1h6a.5.5 0 0 1 0 1zm-6 2h3a.5.5 0 0 1 0 1H5a.5.5 0 0 1 0-1z"/>
+        </svg>
+        {{ expectedVideoName }}
       </div>
     </div>
+
+    <div
+      class="video-drop-zone"
+      :class="{ 'has-error': videoDropError }"
+      @dragover.prevent
+      @drop.prevent="handleVideoDropModal"
+      @click="$refs.videoDropInput.click()"
+    >
+      <input ref="videoDropInput" type="file" accept="video/*" style="display:none" @change="handleVideoSelectModal" />
+      <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" fill="currentColor" viewBox="0 0 16 16">
+        <path d="M.5 9.9a.5.5 0 0 1 .5.5v2.5a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-2.5a.5.5 0 0 1 1 0v2.5a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2v-2.5a.5.5 0 0 1 .5-.5z"/>
+        <path d="M7.646 1.146a.5.5 0 0 1 .708 0l3 3a.5.5 0 0 1-.708.708L8.5 2.707V11.5a.5.5 0 0 1-1 0V2.707L5.354 4.854a.5.5 0 1 1-.708-.708l3-3z"/>
+      </svg>
+      <span>Drop video here or click to browse</span>
+    </div>
+
+    <p v-if="videoDropError" class="video-drop-error">
+      <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 16 16" style="margin-right: 5px; vertical-align: text-bottom;">
+        <path d="M8 15A7 7 0 1 1 8 1a7 7 0 0 1 0 14zm0 1A8 8 0 1 0 8 0a8 8 0 0 0 0 16z"/>
+        <path d="M7.002 11a1 1 0 1 1 2 0 1 1 0 0 1-2 0zM7.1 4.995a.905.905 0 1 1 1.8 0l-.35 3.507a.552.552 0 0 1-1.1 0L7.1 4.995z"/>
+      </svg>
+      {{ videoDropError }}
+    </p>
+  </div>
+</div>
     <!-- Modal conferma back -->
     <div v-if="showBackConfirm" class="modal-overlay">
       <div class="modal-content" style="max-width:380px; text-align:center;">
@@ -815,6 +919,44 @@ h3 { color: rgba(18, 83, 163, 0.918); }
   flex-shrink: 0;
   border-bottom: 1px solid rgba(255,255,255,0.06);
 }
+
+.expected-file-box {
+  margin-bottom: 20px;
+  background: rgba(74, 144, 226, 0.1);
+  padding: 10px;
+  border-radius: 8px;
+  border: 1px dashed #4a90e2;
+}
+
+.expected-file-box small {
+  display: block;
+  color: #b0b0b0;
+  margin-bottom: 4px;
+}
+
+.file-name-badge {
+  color: #4a90e2;
+  font-weight: 600;
+  font-family: monospace;
+  word-break: break-all;
+}
+
+.video-drop-error {
+  color: #ff4d4d;
+  background: rgba(255, 77, 77, 0.1);
+  padding: 10px;
+  border-radius: 6px;
+  margin-top: 15px;
+  font-size: 0.9rem;
+  border-left: 4px solid #ff4d4d;
+}
+
+.video-drop-zone.has-error {
+  border-color: #ff4d4d !important;
+  background: rgba(255, 77, 77, 0.05) !important;
+  color: #ff4d4d;
+}
+
 .badge-tran { color: rgba(18, 83, 163, 0.918); background: rgba(18, 83, 163, 0.12); }
 .badge-orig { color: #00cc99; background: rgba(0, 170, 140, 0.12); }
 
@@ -829,7 +971,7 @@ h3 { color: rgba(18, 83, 163, 0.918); }
 .subtitle-block:hover { background: #353841; }
 .subtitle-block-active { background: #3a4a5a !important; box-shadow: 0 0 8px rgba(137, 41, 234, 0.6); transform: scale(1.02); }
 
-.timestamp { display: block; font-weight: bold; color: rgba(18, 83, 163, 0.918); font-size: 0.85rem; margin-bottom: 4px; flex-shrink: 0; }
+.timestamp { display: block; font-weight: bold; color: rgba(18, 83, 163, 0.918); font-size: 0.85rem; margin-bottom: 4px; margin-left: 5px; flex-shrink: 0; }
 .subtitle-block-active .timestamp { color: rgba(137, 41, 234, 0.6); }
 .testo { margin: 0 0 6px 5px; color: #fff; line-height: 1.4; font-size: 0.9rem; word-break: break-word; }
 

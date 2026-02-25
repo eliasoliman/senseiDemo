@@ -147,24 +147,24 @@ const goToEditor = async () => {
     subtitles.value = parseSrtToArray(parsedData.srt2 || '');
     localStorage.setItem('subtitles', JSON.stringify(subtitles.value));
     localStorage.setItem('tranSubtitles', JSON.stringify(tranSubtitles.value));
-    console.log('selectedProject al push:', selectedProject.value)
     localStorage.setItem('currentProjectId', selectedProject.value.id)
     localStorage.setItem('currentProjectName', selectedProject.value.name)
     localStorage.setItem('currentProjectUserId', selectedProject.value.user_id)
+    localStorage.setItem('currentProjectBackup', JSON.stringify(selectedProject.value)) // ← aggiungi questo
     router.push({
-    name: 'video-player',
-    state: {
-    projectId: selectedProject.value.id,
-    projectName: selectedProject.value.name,
-    projectUserId: selectedProject.value.user_id,
-  }
-});
+      name: 'video-player',
+      state: {
+        project: JSON.parse(JSON.stringify(selectedProject.value)), // ← passa il progetto completo
+        projectId: selectedProject.value.id,
+        projectName: selectedProject.value.name,
+        projectUserId: selectedProject.value.user_id,
+      }
+    });
   } catch (err) {
     console.error('Error parsing SRT data:', err);
     tranSubtitles.value = [];
     subtitles.value = [];
   }
-  
 };
 
 const closeProjectModal = () => {

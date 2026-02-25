@@ -233,12 +233,20 @@ async function createProject() {
 
     const projectRes = await apiAdmin.post('/projects', {
       name: projectName.value,
-      data: JSON.stringify({ srt1, srt2, playhead: 0 })
+      data: JSON.stringify({ srt1, srt2, playhead: 0, videoName: videoFile.value.name })
     });
 
     const createdProject = projectRes.data;
 
     loading.value = false;
+
+    localStorage.setItem('subtitles', JSON.stringify(subtitles))
+    localStorage.setItem('tranSubtitles', JSON.stringify(tranSubtitles))
+
+    // e anche il progetto per l'autosave
+    localStorage.setItem('currentProjectId', createdProject.id)
+    localStorage.setItem('currentProjectName', createdProject.name)
+    localStorage.setItem('currentProjectUserId', createdProject.user_id)
 
     router.push({
       name: 'video-player',
