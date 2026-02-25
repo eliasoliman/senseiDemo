@@ -73,13 +73,21 @@ let tranSubtitles = []
 const transcribingProgress = ref(0)
 const translatingProgress = ref(0)
 
-const apiConversionPost = ' https://api.matita.net/whisper/conversion-start'
-const apiConversionStatus = 'https://api.matita.net/whisper/conversion-status'
-const apiConversionOut = 'https://api.matita.net/whisper/conversion-out'
-const apiConversionLang = 'https://api.matita.net/whisper/conversion-lang'
-const apiConversionTranslated = 'https://api.matita.net/whisper/conversion-translated'
+// Leggiamo i dati dal file .env (i nomi devono essere IDENTICI al file)
+const WHISPER_BASE = import.meta.env.VITE_WHISPER_BASE;
+const WHISPER_TOKEN = import.meta.env.VITE_WHISPER_TOKEN || '';
 
-const tokenBearer = 'Bearer dkPJpR2DqOLPppgQn4oIGPcdQ7W_zgGYvOyf2HTJPxE'
+// Ricostruiamo gli endpoint usando la base
+const apiConversionPost       = `${WHISPER_BASE}/conversion-start`;
+const apiConversionStatus     = `${WHISPER_BASE}/conversion-status`;
+const apiConversionOut        = `${WHISPER_BASE}/conversion-out`;
+
+// Endpoint variabile: se non trova la variabile nel .env, usa quello di default
+const endpointTranslated      = import.meta.env.VITE_ENDPOINT_TRANSLATED || '/conversion-translated';
+const apiConversionTranslated = `${WHISPER_BASE}${endpointTranslated}`;
+
+// Il token per l'autorizzazione
+const tokenBearer = `Bearer ${WHISPER_TOKEN}`;
 
 const API_BASE = 'https://api.matita.net/subtitles-admin'
 const apiAdmin = axios.create({ baseURL: API_BASE })
