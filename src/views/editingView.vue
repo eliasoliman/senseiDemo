@@ -497,14 +497,7 @@ onMounted(() => {
   if (storedTran) tranSubtitles.value = JSON.parse(storedTran)
 
   // Leggi il progetto dallo state del router (passato da myprojects.vue)
-  const projectId = localStorage.getItem('currentProjectId')
-    if (projectId) {
-      currentProject.value = {
-        id: parseInt(projectId),
-        name: localStorage.getItem('currentProjectName'),
-        user_id: parseInt(localStorage.getItem('currentProjectUserId'))
-      }
-    }
+  currentProject.value = history.state?.project || null
 
   // Controlla se il video è già disponibile (caso Form.vue — stesso processo JS)
   const file = history.state?.videoFile || null
