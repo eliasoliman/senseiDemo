@@ -12,6 +12,9 @@ const videoFile = ref(null)
 const currentProject = ref(null)
 const isSaving = ref(false)
 
+// ─── Back con conferma salvataggio ───────────────────────────────────────────
+const showBackConfirm = ref(false)
+
 // Modal bloccante per il drop del video (quando si arriva da myprojects)
 const showVideoDropModal = ref(false)
 const videoDropError = ref('')
@@ -370,21 +373,28 @@ const saveEdit = () => {
   }
 }
 
-// ─── Back con conferma salvataggio ───────────────────────────────────────────
-const showBackConfirm = ref(false)
-
 const handleBack = () => {
   showBackConfirm.value = true
+}
+
+const clearProjectStorage = () => {
+  localStorage.removeItem('subtitles')
+  localStorage.removeItem('tranSubtitles')
+  localStorage.removeItem('currentProjectId')
+  localStorage.removeItem('currentProjectName')
+  localStorage.removeItem('currentProjectUserId')
 }
 
 const confirmBackSave = async () => {
   await handleSave()
   showBackConfirm.value = false
+  clearProjectStorage()
   router.push('/myprojects')
 }
 
 const confirmBackNoSave = () => {
   showBackConfirm.value = false
+  clearProjectStorage()
   router.push('/myprojects')
 }
 
@@ -423,7 +433,8 @@ const handleSave = async () => {
         },
         body: JSON.stringify({
           name: currentProject.value.name,
-          data: JSON.stringify({ srt1, srt2, playhead: 0 })
+          data: JSON.stringify({ srt1, srt2, playhead: 0 }),
+          user_id: currentProject.value.user_id
         })
       }
     )
@@ -487,13 +498,13 @@ onMounted(() => {
 
   // Leggi il progetto dallo state del router (passato da myprojects.vue)
   const projectId = localStorage.getItem('currentProjectId')
-  if (projectId) {
-  currentProject.value = {
-    id: parseInt(projectId),
-    name: localStorage.getItem('currentProjectName'),
-    user_id: parseInt(localStorage.getItem('currentProjectUserId'))
-  }
-}
+    if (projectId) {
+      currentProject.value = {
+        id: parseInt(projectId),
+        name: localStorage.getItem('currentProjectName'),
+        user_id: parseInt(localStorage.getItem('currentProjectUserId'))
+      }
+    }
 
   // Controlla se il video è già disponibile (caso Form.vue — stesso processo JS)
   const file = history.state?.videoFile || null
@@ -565,11 +576,11 @@ watch(videoPlayer, (newPlayer) => {
         </button>
 
         <button class="btn-back" @click="handleBack">
-        <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" fill="currentColor" viewBox="0 0 16 16">
-          <path fill-rule="evenodd" d="M15 8a.5.5 0 0 0-.5-.5H2.707l3.147-3.146a.5.5 0 1 0-.708-.708l-4 4a.5.5 0 0 0 0 .708l4 4a.5.5 0 0 0 .708-.708L2.707 8.5H14.5A.5.5 0 0 0 15 8z"/>
-        </svg>
-        Back
-      </button>
+          <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" fill="currentColor" viewBox="0 0 16 16">
+            <path fill-rule="evenodd" d="M15 8a.5.5 0 0 0-.5-.5H2.707l3.147-3.146a.5.5 0 1 0-.708-.708l-4 4a.5.5 0 0 0 0 .708l4 4a.5.5 0 0 0 .708-.708L2.707 8.5H14.5A.5.5 0 0 0 15 8z"/>
+          </svg>
+          Back
+        </button>
       </nav>
     </header>
 
@@ -615,53 +626,7 @@ watch(videoPlayer, (newPlayer) => {
                 <div class="separator-line"></div>
               </div>
 
-        <!-- Modal conferma back -->
-      <div v-if="showBackConfirm" class="modal-overlay">
-        <div class="modal-content" style="max-width:380px; text-align:center;">
-          <div class="modal-body" style="padding:2rem;">
-            <h4 style="margin:0 0 12px 0; color:#f1f5f9;">Save before leaving?</h4>
-            <p style="color:#64748b; font-size:0.9rem; margin:0 0 24px 0;">
-              Do you want to save your changes before going back?
-            </p>
-            <div style="display:flex; gap:12px; justify-content:center;">
-              <button class="btn btn-secondary" @click="confirmBackNoSave">Leave without saving</button>
-              <button class="btn btn-primary" @click="confirmBackSave" :disabled="isSaving">
-                {{ isSaving ? 'Saving...' : 'Save & Leave' }}
-              </button>
-            </div>
-          </div>
-        </div>
-      </div>
-            
-    <!-- MODAL BLOCCANTE DROP VIDEO — non chiudibile -->
-    <div v-if="showVideoDropModal" class="video-drop-overlay">
-      <div class="video-drop-box">
-        <div class="video-drop-icon">
-          <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" fill="currentColor" viewBox="0 0 16 16">
-            <path d="M6.79 5.093A.5.5 0 0 0 6 5.5v5a.5.5 0 0 0 .79.407l3.5-2.5a.5.5 0 0 0 0-.814l-3.5-2.5z"/>
-            <path d="M0 4a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2V4zm15 0a1 1 0 0 0-1-1H2a1 1 0 0 0-1 1v8a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V4z"/>
-          </svg>
-        </div>
-        <h2>Load your video</h2>
-        <p>The video file is not stored on our servers.<br>Drop the original file to start editing.</p>
-        <div
-          class="video-drop-zone"
-          @dragover.prevent
-          @drop.prevent="handleVideoDropModal"
-          @click="$refs.videoDropInput.click()"
-        >
-          <input ref="videoDropInput" type="file" accept="video/*" style="display:none" @change="handleVideoSelectModal" />
-          <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" fill="currentColor" viewBox="0 0 16 16">
-            <path d="M.5 9.9a.5.5 0 0 1 .5.5v2.5a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-2.5a.5.5 0 0 1 1 0v2.5a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2v-2.5a.5.5 0 0 1 .5-.5z"/>
-            <path d="M7.646 1.146a.5.5 0 0 1 .708 0l3 3a.5.5 0 0 1-.708.708L8.5 2.707V11.5a.5.5 0 0 1-1 0V2.707L5.354 4.854a.5.5 0 1 1-.708-.708l3-3z"/>
-          </svg>
-          <span>Drop video here or click to browse</span>
-        </div>
-        <p v-if="videoDropError" class="video-drop-error">{{ videoDropError }}</p>
-      </div>
-    </div>
-
-</template>
+            </template>
           </div>
         </div>
 
@@ -745,6 +710,50 @@ watch(videoPlayer, (newPlayer) => {
       </div>
     </div>
   </div>
+    <!-- MODAL BLOCCANTE DROP VIDEO — non chiudibile -->
+    <div v-if="showVideoDropModal" class="video-drop-overlay">
+      <div class="video-drop-box">
+        <div class="video-drop-icon">
+          <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" fill="currentColor" viewBox="0 0 16 16">
+            <path d="M6.79 5.093A.5.5 0 0 0 6 5.5v5a.5.5 0 0 0 .79.407l3.5-2.5a.5.5 0 0 0 0-.814l-3.5-2.5z"/>
+            <path d="M0 4a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2V4zm15 0a1 1 0 0 0-1-1H2a1 1 0 0 0-1 1v8a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V4z"/>
+          </svg>
+        </div>
+        <h2>Load your video</h2>
+        <p>The video file is not stored on our servers.<br>Drop the original file to start editing.</p>
+        <div
+          class="video-drop-zone"
+          @dragover.prevent
+          @drop.prevent="handleVideoDropModal"
+          @click="$refs.videoDropInput.click()"
+        >
+          <input ref="videoDropInput" type="file" accept="video/*" style="display:none" @change="handleVideoSelectModal" />
+          <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" fill="currentColor" viewBox="0 0 16 16">
+            <path d="M.5 9.9a.5.5 0 0 1 .5.5v2.5a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-2.5a.5.5 0 0 1 1 0v2.5a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2v-2.5a.5.5 0 0 1 .5-.5z"/>
+            <path d="M7.646 1.146a.5.5 0 0 1 .708 0l3 3a.5.5 0 0 1-.708.708L8.5 2.707V11.5a.5.5 0 0 1-1 0V2.707L5.354 4.854a.5.5 0 1 1-.708-.708l3-3z"/>
+          </svg>
+          <span>Drop video here or click to browse</span>
+        </div>
+        <p v-if="videoDropError" class="video-drop-error">{{ videoDropError }}</p>
+      </div>
+    </div>
+    <!-- Modal conferma back -->
+    <div v-if="showBackConfirm" class="modal-overlay">
+      <div class="modal-content" style="max-width:380px; text-align:center;">
+        <div class="modal-body" style="padding:2rem;">
+          <h4 style="margin:0 0 12px 0; color:#f1f5f9;">Save before leaving?</h4>
+          <p style="color:#64748b; font-size:0.9rem; margin:0 0 24px 0;">
+            Do you want to save your changes before going back?
+          </p>
+          <div style="display:flex; gap:12px; justify-content:center;">
+            <button class="btn btn-secondary" @click="confirmBackNoSave">Leave without saving</button>
+            <button class="btn btn-primary" @click="confirmBackSave" :disabled="isSaving">
+              {{ isSaving ? 'Saving...' : 'Save & Leave' }}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
 </template>
 
 <style scoped>
@@ -953,7 +962,6 @@ textarea.form-control { resize: vertical; min-height: 100px; }
   font-size: 0.85rem;
   margin: 0;
 }
-
 .btn-back {
   display: flex;
   align-items: center;
