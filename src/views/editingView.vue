@@ -813,6 +813,7 @@ watch(videoPlayer, (newPlayer) => {
     <!-- MODAL BLOCCANTE DROP VIDEO — non chiudibile -->
     <div v-if="showVideoDropModal" class="video-drop-overlay">
   <div class="video-drop-box">
+    <button class="video-drop-close" @click="() => { clearProjectStorage(); router.push('/myprojects') }" title="Back to projects">&times;</button>
     <div class="video-drop-icon">
       <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" fill="currentColor" viewBox="0 0 16 16">
         <path d="M6.79 5.093A.5.5 0 0 0 6 5.5v5a.5.5 0 0 0 .79.407l3.5-2.5a.5.5 0 0 0 0-.814l-3.5-2.5z"/>
@@ -957,6 +958,31 @@ h3 { color: rgba(31, 125, 240, 0.918); }
   margin-bottom: 4px;
 }
 
+.video-drop-close {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  background: transparent;
+  border: 1px solid #2d3748;
+  color: #64748b;
+  border-radius: 6px;
+  width: 32px;
+  height: 32px;
+  font-size: 1.2rem;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+  transition: all 0.2s ease;
+}
+
+.video-drop-close:hover {
+  border-color: #4a5568;
+  color: #e2e8f0;
+  background: rgba(255, 255, 255, 0.05);
+}
+
 .file-name-badge {
   color: #4a90e2;
   font-weight: 600;
@@ -1093,6 +1119,7 @@ textarea.form-control { resize: vertical; min-height: 100px; }
   flex-direction: column;
   align-items: center;
   gap: 16px;
+  position: relative;
 }
 
 .video-drop-icon { color: rgba(31, 125, 240, 0.918); }

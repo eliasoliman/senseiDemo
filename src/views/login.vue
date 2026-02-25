@@ -95,9 +95,7 @@ const handleLogin = async () => {
           </Transition>
         </form>
 
-        <div class="auth-footer">
-          Non hai un account? <a href="#" @click.prevent="router.push('/signup')">Sign up</a>
-        </div>
+        
       </div>
     </main>
   </div>
