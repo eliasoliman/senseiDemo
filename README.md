@@ -2,14 +2,12 @@
 
 Sensei è un’applicazione web sviluppata con **Vue 3 + Vite** che genera automaticamente sottotitoli a partire da file **video**.
 
-L’applicazione:
+## ✨ Funzionalità
 
-- 🎙️ Genera automaticamente i sottotitoli nella lingua originale del video  
-- 🌍 Traduce automaticamente i sottotitoli in altre lingue  
-- ✏️ Include un editor integrato per modificare testo e timing  
-
-Repository:  
-👉 https://github.com/eliasoliman/senseiDemo  
+- 🎙️ Generazione automatica dei sottotitoli nella lingua originale del video  
+- 🌍 Traduzione automatica dei sottotitoli in altre lingue  
+- ✏️ Editor integrato per modificare testo e timing  
+- ⚡ Avvio rapido in ambiente di sviluppo  
 
 ---
 
@@ -22,16 +20,6 @@ Repository:
 
 ---
 
-## ✨ Funzionalità
-
-- Upload di file video  
-- Generazione automatica dei sottotitoli  
-- Traduzione automatica multilingua  
-- Editor integrato per modifica manuale  
-- Ambiente di sviluppo veloce grazie a Vite  
-
----
-
 ## 📦 Installazione
 
 Clona la repository:
@@ -39,3 +27,57 @@ Clona la repository:
 ```bash
 git clone https://github.com/eliasoliman/senseiDemo.git
 cd senseiDemo
+```
+
+Installa le dipendenze:
+
+```bash
+npm install
+```
+
+---
+
+## 🧑‍💻 Avvio in sviluppo
+
+Per avviare il progetto è sufficiente eseguire:
+
+```bash
+npm run dev
+```
+
+Vite avvierà automaticamente il server di sviluppo (solitamente su http://localhost:5173).
+
+---
+
+## 🧠 Workflow dell'applicazione
+
+1. L’utente carica un file video  
+2. Il sistema genera automaticamente i sottotitoli nella lingua originale  
+3. I sottotitoli vengono automaticamente tradotti  
+4. L’utente può modificarli tramite l’editor integrato  
+5. Esportazione dei sottotitoli  
+
+---
+
+## 📁 Struttura del progetto
+
+```
+senseiDemo/
+│
+├── src/
+│   ├── components/
+│   ├── views/
+│   ├── assets/
+│   └── main.js
+│
+├── public/
+├── package.json
+└── vite.config.js
+```
+
+---
+
+## 👨‍💻 Autore
+
+**Elia Soliman**  
+GitHub: https://github.com/eliasoliman
