@@ -8,16 +8,34 @@
         <label>My project</label>
       </div>
       <p>Insert video source</p>
-      <div class="dropzone" @dragover.prevent @drop.prevent="handleDrop">
-        <p v-if="!videoFile">Drop your video source here</p>
+      <div class="dropzone" @dragover.prevent @drop.prevent="handleDrop" @click="$refs.videoDropInput.click()">
+        <input
+          type="file"
+          ref="videoDropInput"
+          accept="video/*"
+          style="display: none"
+          @change="handleFileInput"
+        />
+        <p v-if="!videoFile">Drop your video source here or <span class="browse-link">browse</span></p>
         <p v-else>Selected file: {{ videoFile.name }}</p>
       </div>
+        <div v-if="isAzureMode">
+          <p>Source language</p>
+          <select class="form-select mb-3" v-model="sourceLanguage">
+            <option value="">Select source language</option>
+            <option value="de">German</option>
+            <option value="en">English</option>
+            <option value="es">Spanish</option>
+            <option value="it">Italian</option>
+          </select>
+        </div>
       <p>Target language</p>
       <select class="form-select mb-3" v-model="targetLanguage">
         <option value="">Select the language</option>
-        <option value="en">English</option>
-        <option value="it">Italian</option>
-        <option value="fr">French</option>
+        <<option value="de">German</option>
+            <option value="en">English</option>
+            <option value="es">Spanish</option>
+            <option value="it">Italian</option>
       </select>
       <button class="btn btn-lg btn-light fw-bold" @click="handleCreate">Create</button>
     </div>
@@ -51,7 +69,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, computed } from 'vue'
 import axios from 'axios'
 import { useRouter } from 'vue-router'
 
@@ -73,20 +91,20 @@ let tranSubtitles = []
 const transcribingProgress = ref(0)
 const translatingProgress = ref(0)
 
-// Leggiamo i dati dal file .env (i nomi devono essere IDENTICI al file)
+const sourceLanguage = ref('')
+const envValue = import.meta.env.VITE_REQUIRE_SOURCE_LANG
+const isAzureMode = computed(() => envValue === 'true')
+
 const WHISPER_BASE = import.meta.env.VITE_WHISPER_BASE;
 const WHISPER_TOKEN = import.meta.env.VITE_WHISPER_TOKEN || '';
 
-// Ricostruiamo gli endpoint usando la base
 const apiConversionPost       = `${WHISPER_BASE}/conversion-start`;
 const apiConversionStatus     = `${WHISPER_BASE}/conversion-status`;
 const apiConversionOut        = `${WHISPER_BASE}/conversion-out`;
 
-// Endpoint variabile: se non trova la variabile nel .env, usa quello di default
 const endpointTranslated      = import.meta.env.VITE_ENDPOINT_TRANSLATED || '/conversion-translated';
 const apiConversionTranslated = `${WHISPER_BASE}${endpointTranslated}`;
 
-// Il token per l'autorizzazione
 const tokenBearer = `Bearer ${WHISPER_TOKEN}`;
 
 const API_BASE = 'https://api.matita.net/subtitles-admin'
@@ -132,6 +150,13 @@ function handleDrop(event) {
   }
 }
 
+function handleFileInput(event) {
+  const files = event.target.files
+  if (files.length > 0) {
+    videoFile.value = files[0]
+  }
+}
+
 function handleCreate() {
   if (!isLogged()) {
     localStorage.setItem('pendingProject', JSON.stringify({
@@ -156,20 +181,39 @@ async function createProject() {
     transcribingProgress.value = 0;
     translatingProgress.value = 0;
 
+    console.log('[NewProject] Avvio creazione progetto:', {
+      projectName: projectName.value,
+      targetLanguage: targetLanguage.value,
+      sourceLanguage: sourceLanguage.value,
+      videoFile: videoFile.value?.name,
+      videoSize: `${(videoFile.value?.size / 1024 / 1024).toFixed(2)} MB`,
+      isAzureMode: isAzureMode.value,
+      apiConversionPost
+    });
+
     const formData = new FormData();
     formData.append('file', videoFile.value);
 
-    const conversionJob = await axios.post(apiConversionPost, formData, {
-      headers: {
-        'Authorization': tokenBearer,
-        'Content-Type': 'multipart/form-data'
-      },
-      params: {
-        translate_to: targetLanguage.value
+    const params = {};
+      if (targetLanguage.value) {
+        params.translate_to = targetLanguage.value;
       }
-    });
+      if (isAzureMode) {
+        params.source = sourceLanguage.value;
+      }
+
+    console.log('[NewProject] Invio a:', apiConversionPost, '| Params:', params);
+
+      const conversionJob = await axios.post(apiConversionPost, formData, {
+        headers: {
+          'Authorization': tokenBearer,
+          'Content-Type': 'multipart/form-data'
+        },
+        params
+      });
 
     const jobId = conversionJob.data.id;
+    console.log('[NewProject] Job avviato, ID:', jobId, '| Risposta completa:', conversionJob.data);
 
     const maxAttempts = 3000;
     const pollInterval = 1000;
@@ -182,6 +226,8 @@ async function createProject() {
 
       const { status, error, stage, progress } = statusResponse.data;
 
+      console.log(`[NewProject] Poll #${attempt} - status: "${status}" | stage: "${stage}" | progress: ${progress ?? 'n/a'}`);
+
       if (stage === 'transcribing') {
         transcribingProgress.value = Math.trunc(progress || 0);
       } else if (stage === 'translating') {
@@ -193,10 +239,12 @@ async function createProject() {
         transcribingProgress.value = 100;
         translatingProgress.value = 100;
         conversionCompleted = true;
+        console.log('[NewProject] Conversione completata!');
         break;
       }
 
       if (status === 'failed') {
+        console.error('[NewProject] Conversione fallita. Errore server:', error);
         throw new Error(error || 'Conversione fallita');
       }
 
@@ -204,10 +252,12 @@ async function createProject() {
     }
 
     if (!conversionCompleted) {
+      console.error('[NewProject] Timeout raggiunto dopo', maxAttempts, 'tentativi');
       throw new Error('Timeout: conversione non completata');
     }
 
-    // ─── SRT ORIGINALE ─────────────────────────────────────────
+    // --- SRT ORIGINALE ---
+    console.log('[NewProject] Recupero SRT originale da:', `${apiConversionOut}?id=${jobId}`);
     const originalResponse = await axios.get(`${apiConversionOut}?id=${jobId}`, {
       headers: { 'Authorization': tokenBearer }
     });
@@ -223,7 +273,10 @@ async function createProject() {
       return null;
     }).filter(item => item !== null);
 
-    // ─── SRT TRADOTTO ─────────────────────────────────────────
+    console.log(`[NewProject] SRT originale: ${subtitles.length} blocchi. Primi 2:`, subtitles.slice(0, 2));
+
+    // --- SRT TRADOTTO ---
+    console.log('[NewProject] Recupero SRT tradotto da:', `${apiConversionTranslated}?id=${jobId}`);
     const translatedResponse = await axios.get(`${apiConversionTranslated}?id=${jobId}`, {
       headers: { 'Authorization': tokenBearer }
     });
@@ -239,22 +292,27 @@ async function createProject() {
       return null;
     }).filter(item => item !== null);
 
+    console.log(`[NewProject] SRT tradotto: ${tranSubtitles.length} blocchi. Primi 2:`, tranSubtitles.slice(0, 2));
+
+    console.log('[NewProject] Salvataggio progetto su API admin...');
     const projectRes = await apiAdmin.post('/projects', {
       name: projectName.value,
       data: JSON.stringify({ srt1, srt2, playhead: 0, videoName: videoFile.value.name })
     });
 
     const createdProject = projectRes.data;
+    console.log('[NewProject] Progetto salvato:', createdProject);
 
     loading.value = false;
 
     localStorage.setItem('subtitles', JSON.stringify(subtitles))
     localStorage.setItem('tranSubtitles', JSON.stringify(tranSubtitles))
 
-    // e anche il progetto per l'autosave
     localStorage.setItem('currentProjectId', createdProject.id)
     localStorage.setItem('currentProjectName', createdProject.name)
     localStorage.setItem('currentProjectUserId', createdProject.user_id)
+
+    console.log('[NewProject] Redirect a video-player con progetto ID:', createdProject.id);
 
     router.push({
       name: 'video-player',
@@ -267,9 +325,10 @@ async function createProject() {
     });
 
   } catch (error) {
-    console.error('Errore completo:', error);
-    console.error('Response data:', error.response?.data)
-    console.error('Response status:', error.response?.status)
+    console.error('[NewProject] Errore durante la creazione:', error.message);
+    console.error('[NewProject] Response status:', error.response?.status);
+    console.error('[NewProject] Response data:', error.response?.data);
+    console.error('[NewProject] Stack trace:', error.stack);
     loading.value = false;
     alert(`Errore: ${error.message}`);
   }
