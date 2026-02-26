@@ -178,6 +178,57 @@ const addSubtitleBetween = (index) => {
   localStorage.setItem(activeSidebarTrack.value === 'tran' ? 'tranSubtitles' : 'subtitles', JSON.stringify(targetArray.value))
 }
 
+const addSubtitleAtStart = () => {
+  saveUndoSnapshot()
+  const targetArray = activeSidebarTrack.value === 'tran' ? tranSubtitles : subtitles
+  const DEFAULT_DURATION = 0.5 // 500ms = durata minima
+
+  // Il nuovo sottotitolo occupa 0 → 500ms
+  const newSub = {
+    timestamp: buildTimestamp(0, DEFAULT_DURATION),
+    testo: ''
+  }
+
+  // Se esiste già un primo sottotitolo, lo sposta a partire da 500ms
+  // mantenendo invariato il suo timestamp di fine
+  if (targetArray.value.length > 0) {
+    const first = targetArray.value[0]
+    const firstEnd = parseSrtTimestampEnd(first.timestamp)
+    // Il fine rimane invariato, lo start diventa 500ms
+    // (solo se firstEnd > DEFAULT_DURATION, altrimenti ci sarebbe durata 0 o negativa)
+    if (firstEnd > DEFAULT_DURATION) {
+      first.timestamp = buildTimestamp(DEFAULT_DURATION, firstEnd)
+    }
+  }
+
+  targetArray.value.unshift(newSub)
+  localStorage.setItem(
+    activeSidebarTrack.value === 'tran' ? 'tranSubtitles' : 'subtitles',
+    JSON.stringify(targetArray.value)
+  )
+}
+
+const addSubtitleAtEnd = () => {
+  saveUndoSnapshot()
+  const targetArray = activeSidebarTrack.value === 'tran' ? tranSubtitles : subtitles
+  const DEFAULT_DURATION = 0.5
+
+  const lastEnd = targetArray.value.length > 0
+    ? parseSrtTimestampEnd(targetArray.value[targetArray.value.length - 1].timestamp) + 0.1
+    : 0
+
+  const newSub = {
+    timestamp: buildTimestamp(lastEnd, lastEnd + DEFAULT_DURATION),
+    testo: ''
+  }
+
+  targetArray.value.push(newSub)
+  localStorage.setItem(
+    activeSidebarTrack.value === 'tran' ? 'tranSubtitles' : 'subtitles',
+    JSON.stringify(targetArray.value)
+  )
+}
+
 const mergeSubtitles = (index) => {
   saveUndoSnapshot()
   const targetArray = activeSidebarTrack.value === 'tran' ? tranSubtitles : subtitles
@@ -258,6 +309,7 @@ const handleExport = () => {
   downloadSrt(arrayToSrt(tranSubtitles.value), 'srt_translated.srt')
   downloadSrt(arrayToSrt(subtitles.value), 'srt_original.srt')
 }
+
 const scrollSidebarToActive = () => {
   if (!subtitlesScroll.value || !isPlaying.value) return
   
@@ -524,6 +576,33 @@ const handleSave = async () => {
   }
 }
 
+// --- TRIM SOTTOTITOLI OLTRE LA DURATA DEL VIDEO ---
+const trimSubtitlesToDuration = () => {
+  if (!videoDuration.value || videoDuration.value === 0) return
+
+  const filter = (arr) => arr.filter(sub => {
+    const start = parseSrtTimestamp(sub.timestamp)
+    return start < videoDuration.value
+  })
+
+  const filteredSubs = filter(subtitles.value)
+  const filteredTran = filter(tranSubtitles.value)
+
+  if (filteredSubs.length !== subtitles.value.length) {
+    subtitles.value = filteredSubs
+    localStorage.setItem('subtitles', JSON.stringify(subtitles.value))
+  }
+  if (filteredTran.length !== tranSubtitles.value.length) {
+    tranSubtitles.value = filteredTran
+    localStorage.setItem('tranSubtitles', JSON.stringify(tranSubtitles.value))
+  }
+}
+
+// Si attiva appena la durata del video è nota (onloadedmetadata è asincrono)
+watch(videoDuration, (val) => {
+  if (val > 0) trimSubtitlesToDuration()
+})
+
 let autosaveInterval = null
 
 watch(currentTime, () => {
@@ -558,7 +637,7 @@ const loadVideoFile = (file) => {
     return;
   }
 
-   console.log('expectedVideoName:', expectedVideoName.value);
+  console.log('expectedVideoName:', expectedVideoName.value);
   console.log('file.name:', file.name);
   console.log('currentProject:', JSON.stringify(currentProject.value));
 
@@ -598,7 +677,7 @@ onMounted(() => {
     localStorage.setItem('currentProjectName', projectFromState.name)
     
     console.log("Progetto caricato correttamente:", currentProject.value);
-  }else if (backupId) {
+  } else if (backupId) {
     const fullBackup = localStorage.getItem('currentProjectBackup')
     if (fullBackup) {
        currentProject.value = JSON.parse(fullBackup)
@@ -700,34 +779,53 @@ watch(videoPlayer, (newPlayer) => {
           </div>
 
           <div class="subtitles-scroll" ref="subtitlesScroll">
-            <template v-for="(subtitle, index) in sidebarSubtitles" :key="index">
-              <div 
-                class="subtitle-block"
-                :class="{ 'subtitle-block-active': isSubtitleActive(index) }"
-                @dblclick="handleSidebarDoubleClick(index)"
-              >
-                <span class="timestamp">{{ subtitle.timestamp }}</span>
-                <p class="testo">{{ subtitle.testo }}</p>
-                <div class="block-actions">
-                  <button class="btn-delete" @click.stop="deleteSubtitle(index)" title="Elimina sottotitolo">Delete</button>
-                  <button class="btn-edit" @click.stop="openEditModal(index)">Edit</button>
-                </div>
-              </div>
 
-              <div
-                v-if="index < sidebarSubtitles.length - 1"
-                class="subtitle-separator"
-              >
-                <div class="separator-line"></div>
-                <div class="separator-actions">
-                  <button class="btn-sep btn-add" @click.stop="addSubtitleBetween(index)">+ add</button>
-                  <button class="btn-sep btn-merge" @click.stop="mergeSubtitles(index)">⊕ merge</button>
-                </div>
-                <div class="separator-line"></div>
-              </div>
+  <!-- ADD BEFORE FIRST -->
+  <div class="subtitle-separator subtitle-separator--edge">
+    <div class="separator-line"></div>
+    <div class="separator-actions">
+      <button class="btn-sep btn-add" @click.stop="addSubtitleAtStart">+ add</button>
+    </div>
+    <div class="separator-line"></div>
+  </div>
 
-            </template>
-          </div>
+  <template v-for="(subtitle, index) in sidebarSubtitles" :key="index">
+    <div 
+      class="subtitle-block"
+      :class="{ 'subtitle-block-active': isSubtitleActive(index) }"
+      @dblclick="handleSidebarDoubleClick(index)"
+    >
+      <span class="timestamp">{{ subtitle.timestamp }}</span>
+      <p class="testo">{{ subtitle.testo }}</p>
+      <div class="block-actions">
+        <button class="btn-delete" @click.stop="deleteSubtitle(index)" title="Elimina sottotitolo">Delete</button>
+        <button class="btn-edit" @click.stop="openEditModal(index)">Edit</button>
+      </div>
+    </div>
+
+    <div
+      v-if="index < sidebarSubtitles.length - 1"
+      class="subtitle-separator"
+    >
+      <div class="separator-line"></div>
+      <div class="separator-actions">
+        <button class="btn-sep btn-add" @click.stop="addSubtitleBetween(index)">+ add</button>
+        <button class="btn-sep btn-merge" @click.stop="mergeSubtitles(index)">⊕ merge</button>
+      </div>
+      <div class="separator-line"></div>
+    </div>
+      </template>
+
+      <!-- ADD AFTER LAST -->
+      <div class="subtitle-separator subtitle-separator--edge">
+        <div class="separator-line"></div>
+        <div class="separator-actions">
+          <button class="btn-sep btn-add" @click.stop="addSubtitleAtEnd">+ add</button>
+        </div>
+        <div class="separator-line"></div>
+      </div>
+
+    </div>
         </div>
 
         <div class="video-area">
@@ -1041,10 +1139,10 @@ h3 { color: rgba(31, 125, 240, 0.918); }
 }
 .badge-orig ~ .subtitles-scroll .subtitle-block { border-left-color: #00aa8c; }
 .subtitle-block:hover { background: #353841; }
-.subtitle-block-active { background: #3a4a5a !important; box-shadow: 0 0 8px rgba(137, 41, 234, 0.6); transform: scale(1.02); }
+.subtitle-block-active { background: #3a4a5a !important; box-shadow: 0 0 8px #00cc9999; transform: scale(1.02); }
 
 .timestamp { display: block; font-weight: bold; color: rgba(31, 125, 240, 0.918); font-size: 0.85rem; margin-bottom: 4px; margin-left: 5px; flex-shrink: 0; }
-.subtitle-block-active .timestamp { color: rgba(137, 41, 234, 0.6); }
+.subtitle-block-active .timestamp { color: #00cc99; }
 .testo { margin: 0 0 6px 5px; color: #fff; line-height: 1.4; font-size: 0.9rem; word-break: break-word; }
 
 .block-actions { display: flex; justify-content: flex-end; gap: 6px; flex-shrink: 0; margin-top: 2px; }
@@ -1053,18 +1151,18 @@ h3 { color: rgba(31, 125, 240, 0.918); }
 .btn-delete:hover { background: rgba(210, 40, 40, 1); color: #fff; transform: translateY(-1px); }
 .btn-edit { background: rgba(31, 125, 240, 0.918); color: #c8dcff; }
 .btn-edit:hover { background: rgba(31, 125, 240, 1); color: #fff; transform: translateY(-1px); }
-.subtitle-block-active .btn-edit { background: rgba(137, 41, 234, 0.75); color: #e8d5ff; }
-.subtitle-block-active .btn-edit:hover { background: rgba(137, 41, 234, 1); color: #fff; }
+.subtitle-block-active .btn-edit { background: rgba(0, 204, 153, 0.75); color: #fff; }
+.subtitle-block-active .btn-edit:hover { background: #00cc99; color: #fff; }
 
-.subtitle-separator { display: flex; align-items: center; gap: 6px; padding: 2px 4px; opacity: 0.25; transition: opacity 0.2s ease; }
+.subtitle-separator { display: flex; align-items: center; gap: 6px; padding: 2px 4px; opacity: 0.6; transition: opacity 0.2s ease; }
 .subtitle-separator:hover { opacity: 1; }
 .separator-line { flex: 1; height: 1px; background: rgba(255, 255, 255, 0.12); }
 .separator-actions { display: flex; gap: 4px; flex-shrink: 0; }
 .btn-sep { padding: 1px 8px; font-size: 0.68rem; font-weight: 600; border: none; border-radius: 3px; cursor: pointer; line-height: 1.6; letter-spacing: 0.02em; transition: all 0.15s ease; white-space: nowrap; }
 .btn-add { background: rgba(31, 125, 240, 0.5); color: #c8dcff; border: 1px solid rgba(31, 125, 240, 0.918); }
 .btn-add:hover { background: rgba(31, 125, 240, 0.9); color: #fff; box-shadow: 0 2px 6px rgba(31, 125, 240, 0.4); }
-.btn-merge { background: rgba(137, 41, 234, 0.35); color: #d9b8ff; border: 1px solid rgba(137, 41, 234, 0.55); }
-.btn-merge:hover { background: rgba(137, 41, 234, 0.8); color: #fff; box-shadow: 0 2px 6px rgba(137, 41, 234, 0.4); }
+.btn-merge { background: rgba(0, 204, 153, 0.2); color: #00cc99; border: 1px solid rgba(0, 204, 153, 0.55); }
+.btn-merge:hover { background: rgba(0, 204, 153, 0.8); color: #fff; box-shadow: 0 2px 6px rgba(0, 204, 153, 0.4); }
 
 .video-area { background-color: rgb(33, 32, 32); display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; overflow: hidden; }
 .video-box { width: 90%; height: 90%; max-height: 90%; position: relative; display: flex; align-items: center; justify-content: center; overflow: hidden; }

@@ -376,7 +376,7 @@ onUnmounted(() => {
       <div class="waveform-label">Waveform</div>
 
       <div class="track-label">
-        <span>Track 1</span>
+        <span>Translated</span>
         <button
           class="eye-btn"
           :class="{ 'eye-btn-active': activeSidebarTrack === 'tran' }"
@@ -397,7 +397,7 @@ onUnmounted(() => {
 
     
       <div class="track-label">
-        <span>Track 2</span>
+        <span>Original</span>
         <button
           class="eye-btn"
           :class="{ 'eye-btn-active': activeSidebarTrack === 'orig' }"
