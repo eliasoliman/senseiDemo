@@ -38,7 +38,6 @@ const expectedVideoName = computed(() => {
   let d = currentProject.value.data;
   if (!d) return '';
 
-  // Parsing ricorsivo sicuro
   try {
     while (typeof d === 'string') {
       d = JSON.parse(d);
@@ -47,7 +46,6 @@ const expectedVideoName = computed(() => {
     return '';
   }
 
-  // Cerca videoName a qualsiasi livello di annidamento
   return d.videoName || (d.data && d.data.videoName) || '';
 });
 
@@ -59,7 +57,6 @@ watch(currentProject, (newVal) => {
       while (typeof d === 'string' && d.startsWith('{')) { 
         d = JSON.parse(d); 
       }
-      // Assegnazione reattiva pulita
       currentProject.value = { ...newVal, data: d };
     } catch (e) {
       console.warn("Errore parsing watcher dati", e);
@@ -181,21 +178,16 @@ const addSubtitleBetween = (index) => {
 const addSubtitleAtStart = () => {
   saveUndoSnapshot()
   const targetArray = activeSidebarTrack.value === 'tran' ? tranSubtitles : subtitles
-  const DEFAULT_DURATION = 0.5 // 500ms = durata minima
+  const DEFAULT_DURATION = 0.5
 
-  // Il nuovo sottotitolo occupa 0 → 500ms
   const newSub = {
     timestamp: buildTimestamp(0, DEFAULT_DURATION),
     testo: ''
   }
 
-  // Se esiste già un primo sottotitolo, lo sposta a partire da 500ms
-  // mantenendo invariato il suo timestamp di fine
   if (targetArray.value.length > 0) {
     const first = targetArray.value[0]
     const firstEnd = parseSrtTimestampEnd(first.timestamp)
-    // Il fine rimane invariato, lo start diventa 500ms
-    // (solo se firstEnd > DEFAULT_DURATION, altrimenti ci sarebbe durata 0 o negativa)
     if (firstEnd > DEFAULT_DURATION) {
       first.timestamp = buildTimestamp(DEFAULT_DURATION, firstEnd)
     }
@@ -511,6 +503,38 @@ const arrayToSrt = (arr) => {
   return arr.map((sub, i) => `${i + 1}\n${sub.timestamp}\n${sub.testo}`).join('\n\n')
 }
 
+// ─── API fetch centralizzato con refresh token automatico ────────────────────
+const apiFetch = async (url, options = {}) => {
+  const token = localStorage.getItem('subtitles_token')
+  if (!token) {
+    router.push('/login')
+    return null
+  }
+
+  const res = await fetch(url, {
+    ...options,
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${token}`,
+      ...(options.headers || {})
+    }
+  })
+
+  const refreshedToken = res.headers.get('x-refresh-token')
+  console.log('x-refresh-token letto dal JS:', refreshedToken) // <-- controlla in console
+  if (refreshedToken) {
+    localStorage.setItem('subtitles_token', refreshedToken)
+  }
+
+  if (res.status === 401) {
+    localStorage.removeItem('subtitles_token')
+    router.push('/login')
+    return null
+  }
+
+  return res
+}
+
 const handleSave = async () => {
   if (!currentProject.value || !currentProject.value.id) {
     console.warn('handleSave: nessun progetto o ID mancante');
@@ -524,10 +548,6 @@ const handleSave = async () => {
   const srt2 = arrayToSrt(subtitles.value);
 
   try {
-    const currentToken = localStorage.getItem('subtitles_token');
-    if (!currentToken) return;
-
-    // Recuperiamo il videoName corrente per non perderlo
     let currentData = {};
     try {
       let d = currentProject.value.data;
@@ -535,39 +555,26 @@ const handleSave = async () => {
       currentData = d;
     } catch (e) { currentData = {}; }
 
-    const res = await fetch(
+    const res = await apiFetch(
       `https://api.matita.net/subtitles-admin/projects/${currentProject.value.id}`,
       {
         method: 'PATCH',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${currentToken}`
-        },
         body: JSON.stringify({
           name: currentProject.value.name,
-          data: JSON.stringify({ 
+          data: JSON.stringify({
             ...currentData,
-            srt1, 
-            srt2, 
-            playhead: 0 
+            srt1,
+            srt2,
+            playhead: 0
           })
         })
       }
     );
 
-    if (res.status === 401) {
-      localStorage.removeItem('subtitles_token');
-      router.push('/login');
-      return;
-    }
+    if (!res) return; // 401 già gestito da apiFetch
 
     if (!res.ok) {
       throw new Error(`HTTP ${res.status}`);
-    }
-
-    const refreshedToken = res.headers.get('x-refresh-token');
-    if (refreshedToken) {
-      localStorage.setItem('subtitles_token', refreshedToken);
     }
   } catch (err) {
     console.error('Save error:', err);
@@ -598,7 +605,6 @@ const trimSubtitlesToDuration = () => {
   }
 }
 
-// Si attiva appena la durata del video è nota (onloadedmetadata è asincrono)
 watch(videoDuration, (val) => {
   if (val > 0) trimSubtitlesToDuration()
 })
@@ -631,7 +637,6 @@ const handleVideoSelectModal = (event) => {
 const loadVideoFile = (file) => {
   videoDropError.value = '';
   
-  // VALIDAZIONE NOME FILE
   if (expectedVideoName.value && file.name !== expectedVideoName.value) {
     videoDropError.value = `Errore: il file selezionato (${file.name}) non corrisponde al video originale del progetto: "${expectedVideoName.value}".`;
     return;
@@ -659,7 +664,6 @@ onMounted(() => {
   const backupId = localStorage.getItem('currentProjectId')
 
   if (projectFromState) {
-    // Prima di assegnare, forziamo il parsing se data è una stringa
     let cleanData = projectFromState.data;
     try {
       while (typeof cleanData === 'string' && cleanData.trim().startsWith('{')) {
@@ -669,7 +673,6 @@ onMounted(() => {
       console.error("Errore parsing dati in onMounted", e);
     }
 
-    // Assegniamo l'oggetto pulito
     currentProject.value = { ...projectFromState, data: cleanData };
     
     localStorage.setItem('currentProjectBackup', JSON.stringify(currentProject.value))

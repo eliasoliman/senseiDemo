@@ -98,11 +98,15 @@ const isAzureMode = computed(() => envValue === 'true')
 const WHISPER_BASE = import.meta.env.VITE_WHISPER_BASE;
 const WHISPER_TOKEN = import.meta.env.VITE_WHISPER_TOKEN || '';
 
-const apiConversionPost       = `${WHISPER_BASE}/conversion-start`;
-const apiConversionStatus     = `${WHISPER_BASE}/conversion-status`;
-const apiConversionOut        = `${WHISPER_BASE}/conversion-out`;
 
-const endpointTranslated      = import.meta.env.VITE_ENDPOINT_TRANSLATED || '/conversion-translated';
+const endpointPost       = import.meta.env.VITE_ENDPOINT_POST       || '/conversion-start';
+const endpointStatus     = import.meta.env.VITE_ENDPOINT_STATUS     || '/conversion-status';
+const endpointOut        = import.meta.env.VITE_ENDPOINT_OUT        || '/conversion-out';
+const endpointTranslated = import.meta.env.VITE_ENDPOINT_TRANSLATED || '/conversion-translated';
+
+const apiConversionPost       = `${WHISPER_BASE}${endpointPost}`;
+const apiConversionStatus     = `${WHISPER_BASE}${endpointStatus}`;
+const apiConversionOut        = `${WHISPER_BASE}${endpointOut}`;
 const apiConversionTranslated = `${WHISPER_BASE}${endpointTranslated}`;
 
 const tokenBearer = `Bearer ${WHISPER_TOKEN}`;
@@ -206,9 +210,9 @@ async function createProject() {
 
       const conversionJob = await axios.post(apiConversionPost, formData, {
         headers: {
-          'Authorization': tokenBearer,
-          'Content-Type': 'multipart/form-data'
-        },
+        ...(isAzureMode.value ? {} : { 'Authorization': tokenBearer }),
+        'Content-Type': 'multipart/form-data'
+      },
         params
       });
 
@@ -219,10 +223,22 @@ async function createProject() {
     const pollInterval = 1000;
     let conversionCompleted = false;
 
+    let lastTokenRefresh = Date.now()
+
     for (let attempt = 1; attempt <= maxAttempts; attempt++) {
       const statusResponse = await axios.get(`${apiConversionStatus}?id=${jobId}`, {
-        headers: { 'Authorization': tokenBearer }
-      });
+        headers: isAzureMode.value ? {} : { 'Authorization': tokenBearer }
+      }); 
+
+    if (Date.now() - lastTokenRefresh > 10 * 60 * 1000) {
+    try {
+      await apiAdmin.get('/me')
+      lastTokenRefresh = Date.now()
+      console.log('[NewProject] Token matita aggiornato')
+    } catch (e) {
+      console.warn('[NewProject] Keep-alive token fallito:', e.message)
+    }
+  }  
 
       const { status, error, stage, progress } = statusResponse.data;
 
@@ -259,7 +275,7 @@ async function createProject() {
     // --- SRT ORIGINALE ---
     console.log('[NewProject] Recupero SRT originale da:', `${apiConversionOut}?id=${jobId}`);
     const originalResponse = await axios.get(`${apiConversionOut}?id=${jobId}`, {
-      headers: { 'Authorization': tokenBearer }
+      headers: isAzureMode.value ? {} : { 'Authorization': tokenBearer }
     });
 
     const srt2 = originalResponse.data;
@@ -278,7 +294,7 @@ async function createProject() {
     // --- SRT TRADOTTO ---
     console.log('[NewProject] Recupero SRT tradotto da:', `${apiConversionTranslated}?id=${jobId}`);
     const translatedResponse = await axios.get(`${apiConversionTranslated}?id=${jobId}`, {
-      headers: { 'Authorization': tokenBearer }
+      headers: isAzureMode.value ? {} : { 'Authorization': tokenBearer }
     });
 
     const srt1 = translatedResponse.data;
