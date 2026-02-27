@@ -365,18 +365,19 @@ onMounted(() => {
   if (props.videoRef) {
     const videoElement = props.videoRef.value || props.videoRef
 
-    videoElement.addEventListener('play', () => {
-      isPlaying.value = true
-      startRaf()
-    })
-    videoElement.addEventListener('pause', () => {
-      isPlaying.value = false
-      stopRaf()
-      updateProgress()
-    })
+    // RAF sempre attivo — nessun listener play/pause/seeked per il currentTime
+    const loop = () => {
+      if (props.videoRef) {
+        const el = props.videoRef.value || props.videoRef
+        currentTime.value = el.currentTime
+        isPlaying.value = !el.paused
+      }
+      rafId = requestAnimationFrame(loop)
+    }
+    rafId = requestAnimationFrame(loop)
+
+    // Scroll alla posizione del playhead dopo ogni seek manuale
     videoElement.addEventListener('seeked', () => {
-      updateProgress()
-      // Scroll the timeline to show the playhead after a manual seek
       if (timelineWrapper.value) {
         const container = timelineWrapper.value
         const containerWidth = container.clientWidth
@@ -387,6 +388,7 @@ onMounted(() => {
         })
       }
     })
+
     videoElement.addEventListener('loadedmetadata', () => {
       videoSrc.value = getVideoSrc()
     })
@@ -398,12 +400,6 @@ onMounted(() => {
 
 onUnmounted(() => {
   stopRaf()
-  if (props.videoRef) {
-    const videoElement = props.videoRef.value || props.videoRef
-    videoElement.removeEventListener('play', startRaf)
-    videoElement.removeEventListener('pause', stopRaf)
-    videoElement.removeEventListener('seeked', updateProgress)
-  }
   document.removeEventListener('mousemove', handleMouseMove)
   document.removeEventListener('mouseup', handleMouseUp)
 })
