@@ -32,10 +32,10 @@
       <p>Target language</p>
       <select class="form-select mb-3" v-model="targetLanguage">
         <option value="">Select the language</option>
-        <<option value="de">German</option>
-            <option value="en">English</option>
-            <option value="es">Spanish</option>
-            <option value="it">Italian</option>
+        <option value="de">German</option>
+        <option value="en">English</option>
+        <option value="es">Spanish</option>
+        <option value="it">Italian</option>
       </select>
       <button class="btn btn-lg btn-light fw-bold" @click="handleCreate">Create</button>
     </div>
@@ -97,15 +97,24 @@ const isAzureMode = computed(() => envValue === 'true')
 
 const WHISPER_BASE = import.meta.env.VITE_WHISPER_BASE;
 const WHISPER_TOKEN = import.meta.env.VITE_WHISPER_TOKEN || '';
+const AUDIO_EXTRACTION_TOKEN = import.meta.env.VITE_AUDIO_EXTRACTION_TOKEN || ''; // ← fix: letto dall'env
 
-const apiConversionPost       = `${WHISPER_BASE}/conversion-start`;
-const apiConversionStatus     = `${WHISPER_BASE}/conversion-status`;
-const apiConversionOut        = `${WHISPER_BASE}/conversion-out`;
+const endpointPost       = import.meta.env.VITE_ENDPOINT_POST       || '/conversion-start';
+const endpointStatus     = import.meta.env.VITE_ENDPOINT_STATUS     || '/conversion-status';
+const endpointOut        = import.meta.env.VITE_ENDPOINT_OUT        || '/conversion-out';
+const endpointTranslated = import.meta.env.VITE_ENDPOINT_TRANSLATED || '/conversion-translated';
 
-const endpointTranslated      = import.meta.env.VITE_ENDPOINT_TRANSLATED || '/conversion-translated';
+const apiConversionPost       = `${WHISPER_BASE}${endpointPost}`;
+const apiConversionStatus     = `${WHISPER_BASE}${endpointStatus}`;
+const apiConversionOut        = `${WHISPER_BASE}${endpointOut}`;
 const apiConversionTranslated = `${WHISPER_BASE}${endpointTranslated}`;
 
+const apiAudioPost   = 'https://api.matita.net/whisper/audio-extraction-start'
+const apiAudioStatus = 'https://api.matita.net/whisper/audio-extraction-status'
+const apiAudioGet    = 'https://api.matita.net/whisper/audio-extraction-out'
+
 const tokenBearer = `Bearer ${WHISPER_TOKEN}`;
+const tokenAudio  = `Bearer ${AUDIO_EXTRACTION_TOKEN}`;
 
 const API_BASE = 'https://api.matita.net/subtitles-admin'
 const apiAdmin = axios.create({ baseURL: API_BASE })
@@ -191,26 +200,99 @@ async function createProject() {
       apiConversionPost
     });
 
-    const formData = new FormData();
-    formData.append('file', videoFile.value);
-
+    // ─── Params dichiarati subito, usati sia nel blocco audio che nel post principale ───
     const params = {};
-      if (targetLanguage.value) {
-        params.translate_to = targetLanguage.value;
-      }
-      if (isAzureMode) {
-        params.source = sourceLanguage.value;
-      }
+    if (targetLanguage.value) {
+      params.target = targetLanguage.value;
+    }
+    if (isAzureMode.value) {
+      params.source = sourceLanguage.value;
+    }
 
-    console.log('[NewProject] Invio a:', apiConversionPost, '| Params:', params);
+    // ─── Blocco Azure: estrazione audio ───────────────────────────────────────────────
+    let audiofile = null;
 
-      const conversionJob = await axios.post(apiConversionPost, formData, {
+    if (isAzureMode.value) {
+      const audioFormData = new FormData();
+      audioFormData.append('file', videoFile.value);
+
+      const conversionToAudio = await axios.post(apiAudioPost, audioFormData, {
         headers: {
-          'Authorization': tokenBearer,
+          'Authorization': tokenAudio,
           'Content-Type': 'multipart/form-data'
         },
         params
       });
+      const audioId = conversionToAudio.data.id;
+
+      const maxAttemptsAudio = 3000;
+      const pollIntervalAudio = 1000;
+      let conversionCompletedAudio = false;
+      let lastTokenRefreshAudio = Date.now(); // ← rinominato per evitare conflitto
+
+      for (let attempt = 1; attempt <= maxAttemptsAudio; attempt++) { // ← fix: maxAttemptsAudio
+        const statusResponseAudio = await axios.get(`${apiAudioStatus}?id=${audioId}`, {
+          headers: { 'Authorization': tokenAudio }
+        });
+
+        if (Date.now() - lastTokenRefreshAudio > 10 * 60 * 1000) {
+          try {
+            await apiAdmin.get('/me');
+            lastTokenRefreshAudio = Date.now();
+            console.log('[NewProject] Token matita aggiornato (audio)');
+          } catch (e) {
+            console.warn('[NewProject] Keep-alive token fallito (audio):', e.message);
+          }
+        }
+
+        const { status, error, stage, progress } = statusResponseAudio.data;
+        console.log(`[NewProject] Audio Poll #${attempt} - status: "${status}" | stage: "${stage}" | progress: ${progress ?? 'n/a'}`);
+
+        if (status === 'completed') {
+          conversionCompletedAudio = true;
+          console.log('[NewProject] Conversione Audio completata!');
+          break;
+        }
+
+        if (status === 'failed' || status === 'error') {
+          console.error('[NewProject] Conversione Audio fallita. Errore server:', error);
+          throw new Error(error || 'Conversione audio fallita');
+        }
+
+        await new Promise(resolve => setTimeout(resolve, pollIntervalAudio)); // ← fix: pollIntervalAudio
+      }
+
+      if (!conversionCompletedAudio) {
+        throw new Error('Timeout: conversione audio non completata');
+      }
+
+      audiofile = await axios.get(`${apiAudioGet}?id=${audioId}`, {
+        headers: { 'Authorization': tokenAudio },
+        responseType: 'blob'
+      });
+
+      console.log('[NewProject] Audio estratto:', audiofile.data);
+    }
+
+    // ─── FormData per la trascrizione ─────────────────────────────────────────────────
+    const formData = new FormData();
+    if (isAzureMode.value) {
+      formData.append('audiofile', audiofile.data, 'audio.wav');
+      formData.append('source', params.source ); 
+      formData.append('target', params.target ); 
+    } else {
+      formData.append('file', videoFile.value);
+    }
+
+    console.log('[NewProject] Invio a:', apiConversionPost, '| Params:', params);
+
+    const conversionJob = await axios.post(apiConversionPost, formData, {
+      headers: {
+        ...(isAzureMode.value ? {} : { 'Authorization': tokenBearer }),
+        'Content-Type': 'multipart/form-data'
+      },
+      params
+    });
 
     const jobId = conversionJob.data.id;
     console.log('[NewProject] Job avviato, ID:', jobId, '| Risposta completa:', conversionJob.data);
@@ -218,14 +300,24 @@ async function createProject() {
     const maxAttempts = 3000;
     const pollInterval = 1000;
     let conversionCompleted = false;
+    let lastTokenRefresh = Date.now();
 
     for (let attempt = 1; attempt <= maxAttempts; attempt++) {
       const statusResponse = await axios.get(`${apiConversionStatus}?id=${jobId}`, {
-        headers: { 'Authorization': tokenBearer }
+        headers: isAzureMode.value ? {} : { 'Authorization': tokenBearer }
       });
 
-      const { status, error, stage, progress } = statusResponse.data;
+      if (Date.now() - lastTokenRefresh > 10 * 60 * 1000) {
+        try {
+          await apiAdmin.get('/me');
+          lastTokenRefresh = Date.now();
+          console.log('[NewProject] Token matita aggiornato');
+        } catch (e) {
+          console.warn('[NewProject] Keep-alive token fallito:', e.message);
+        }
+      }
 
+      const { status, error, stage, progress } = statusResponse.data;
       console.log(`[NewProject] Poll #${attempt} - status: "${status}" | stage: "${stage}" | progress: ${progress ?? 'n/a'}`);
 
       if (stage === 'transcribing') {
@@ -243,7 +335,7 @@ async function createProject() {
         break;
       }
 
-      if (status === 'failed') {
+      if (status === 'failed' || status === 'error') {
         console.error('[NewProject] Conversione fallita. Errore server:', error);
         throw new Error(error || 'Conversione fallita');
       }
@@ -259,7 +351,7 @@ async function createProject() {
     // --- SRT ORIGINALE ---
     console.log('[NewProject] Recupero SRT originale da:', `${apiConversionOut}?id=${jobId}`);
     const originalResponse = await axios.get(`${apiConversionOut}?id=${jobId}`, {
-      headers: { 'Authorization': tokenBearer }
+      headers: isAzureMode.value ? {} : { 'Authorization': tokenBearer }
     });
 
     const srt2 = originalResponse.data;
@@ -278,7 +370,7 @@ async function createProject() {
     // --- SRT TRADOTTO ---
     console.log('[NewProject] Recupero SRT tradotto da:', `${apiConversionTranslated}?id=${jobId}`);
     const translatedResponse = await axios.get(`${apiConversionTranslated}?id=${jobId}`, {
-      headers: { 'Authorization': tokenBearer }
+      headers: isAzureMode.value ? {} : { 'Authorization': tokenBearer }
     });
 
     const srt1 = translatedResponse.data;
@@ -307,7 +399,6 @@ async function createProject() {
 
     localStorage.setItem('subtitles', JSON.stringify(subtitles))
     localStorage.setItem('tranSubtitles', JSON.stringify(tranSubtitles))
-
     localStorage.setItem('currentProjectId', createdProject.id)
     localStorage.setItem('currentProjectName', createdProject.name)
     localStorage.setItem('currentProjectUserId', createdProject.user_id)

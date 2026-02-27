@@ -38,7 +38,6 @@ const expectedVideoName = computed(() => {
   let d = currentProject.value.data;
   if (!d) return '';
 
-  // Parsing ricorsivo sicuro
   try {
     while (typeof d === 'string') {
       d = JSON.parse(d);
@@ -47,7 +46,6 @@ const expectedVideoName = computed(() => {
     return '';
   }
 
-  // Cerca videoName a qualsiasi livello di annidamento
   return d.videoName || (d.data && d.data.videoName) || '';
 });
 
@@ -59,7 +57,6 @@ watch(currentProject, (newVal) => {
       while (typeof d === 'string' && d.startsWith('{')) { 
         d = JSON.parse(d); 
       }
-      // Assegnazione reattiva pulita
       currentProject.value = { ...newVal, data: d };
     } catch (e) {
       console.warn("Errore parsing watcher dati", e);
@@ -178,6 +175,52 @@ const addSubtitleBetween = (index) => {
   localStorage.setItem(activeSidebarTrack.value === 'tran' ? 'tranSubtitles' : 'subtitles', JSON.stringify(targetArray.value))
 }
 
+const addSubtitleAtStart = () => {
+  saveUndoSnapshot()
+  const targetArray = activeSidebarTrack.value === 'tran' ? tranSubtitles : subtitles
+  const DEFAULT_DURATION = 0.5
+
+  const newSub = {
+    timestamp: buildTimestamp(0, DEFAULT_DURATION),
+    testo: ''
+  }
+
+  if (targetArray.value.length > 0) {
+    const first = targetArray.value[0]
+    const firstEnd = parseSrtTimestampEnd(first.timestamp)
+    if (firstEnd > DEFAULT_DURATION) {
+      first.timestamp = buildTimestamp(DEFAULT_DURATION, firstEnd)
+    }
+  }
+
+  targetArray.value.unshift(newSub)
+  localStorage.setItem(
+    activeSidebarTrack.value === 'tran' ? 'tranSubtitles' : 'subtitles',
+    JSON.stringify(targetArray.value)
+  )
+}
+
+const addSubtitleAtEnd = () => {
+  saveUndoSnapshot()
+  const targetArray = activeSidebarTrack.value === 'tran' ? tranSubtitles : subtitles
+  const DEFAULT_DURATION = 0.5
+
+  const lastEnd = targetArray.value.length > 0
+    ? parseSrtTimestampEnd(targetArray.value[targetArray.value.length - 1].timestamp) + 0.1
+    : 0
+
+  const newSub = {
+    timestamp: buildTimestamp(lastEnd, lastEnd + DEFAULT_DURATION),
+    testo: ''
+  }
+
+  targetArray.value.push(newSub)
+  localStorage.setItem(
+    activeSidebarTrack.value === 'tran' ? 'tranSubtitles' : 'subtitles',
+    JSON.stringify(targetArray.value)
+  )
+}
+
 const mergeSubtitles = (index) => {
   saveUndoSnapshot()
   const targetArray = activeSidebarTrack.value === 'tran' ? tranSubtitles : subtitles
@@ -258,6 +301,7 @@ const handleExport = () => {
   downloadSrt(arrayToSrt(tranSubtitles.value), 'srt_translated.srt')
   downloadSrt(arrayToSrt(subtitles.value), 'srt_original.srt')
 }
+
 const scrollSidebarToActive = () => {
   if (!subtitlesScroll.value || !isPlaying.value) return
   
@@ -459,6 +503,38 @@ const arrayToSrt = (arr) => {
   return arr.map((sub, i) => `${i + 1}\n${sub.timestamp}\n${sub.testo}`).join('\n\n')
 }
 
+// ─── API fetch centralizzato con refresh token automatico ────────────────────
+const apiFetch = async (url, options = {}) => {
+  const token = localStorage.getItem('subtitles_token')
+  if (!token) {
+    router.push('/login')
+    return null
+  }
+
+  const res = await fetch(url, {
+    ...options,
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${token}`,
+      ...(options.headers || {})
+    }
+  })
+
+  const refreshedToken = res.headers.get('x-refresh-token')
+  console.log('x-refresh-token letto dal JS:', refreshedToken) // <-- controlla in console
+  if (refreshedToken) {
+    localStorage.setItem('subtitles_token', refreshedToken)
+  }
+
+  if (res.status === 401) {
+    localStorage.removeItem('subtitles_token')
+    router.push('/login')
+    return null
+  }
+
+  return res
+}
+
 const handleSave = async () => {
   if (!currentProject.value || !currentProject.value.id) {
     console.warn('handleSave: nessun progetto o ID mancante');
@@ -472,10 +548,6 @@ const handleSave = async () => {
   const srt2 = arrayToSrt(subtitles.value);
 
   try {
-    const currentToken = localStorage.getItem('subtitles_token');
-    if (!currentToken) return;
-
-    // Recuperiamo il videoName corrente per non perderlo
     let currentData = {};
     try {
       let d = currentProject.value.data;
@@ -483,39 +555,26 @@ const handleSave = async () => {
       currentData = d;
     } catch (e) { currentData = {}; }
 
-    const res = await fetch(
+    const res = await apiFetch(
       `https://api.matita.net/subtitles-admin/projects/${currentProject.value.id}`,
       {
         method: 'PATCH',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${currentToken}`
-        },
         body: JSON.stringify({
           name: currentProject.value.name,
-          data: JSON.stringify({ 
+          data: JSON.stringify({
             ...currentData,
-            srt1, 
-            srt2, 
-            playhead: 0 
+            srt1,
+            srt2,
+            playhead: 0
           })
         })
       }
     );
 
-    if (res.status === 401) {
-      localStorage.removeItem('subtitles_token');
-      router.push('/login');
-      return;
-    }
+    if (!res) return; // 401 già gestito da apiFetch
 
     if (!res.ok) {
       throw new Error(`HTTP ${res.status}`);
-    }
-
-    const refreshedToken = res.headers.get('x-refresh-token');
-    if (refreshedToken) {
-      localStorage.setItem('subtitles_token', refreshedToken);
     }
   } catch (err) {
     console.error('Save error:', err);
@@ -523,6 +582,32 @@ const handleSave = async () => {
     isSaving.value = false;
   }
 }
+
+// --- TRIM SOTTOTITOLI OLTRE LA DURATA DEL VIDEO ---
+const trimSubtitlesToDuration = () => {
+  if (!videoDuration.value || videoDuration.value === 0) return
+
+  const filter = (arr) => arr.filter(sub => {
+    const start = parseSrtTimestamp(sub.timestamp)
+    return start < videoDuration.value
+  })
+
+  const filteredSubs = filter(subtitles.value)
+  const filteredTran = filter(tranSubtitles.value)
+
+  if (filteredSubs.length !== subtitles.value.length) {
+    subtitles.value = filteredSubs
+    localStorage.setItem('subtitles', JSON.stringify(subtitles.value))
+  }
+  if (filteredTran.length !== tranSubtitles.value.length) {
+    tranSubtitles.value = filteredTran
+    localStorage.setItem('tranSubtitles', JSON.stringify(tranSubtitles.value))
+  }
+}
+
+watch(videoDuration, (val) => {
+  if (val > 0) trimSubtitlesToDuration()
+})
 
 let autosaveInterval = null
 
@@ -552,13 +637,12 @@ const handleVideoSelectModal = (event) => {
 const loadVideoFile = (file) => {
   videoDropError.value = '';
   
-  // VALIDAZIONE NOME FILE
   if (expectedVideoName.value && file.name !== expectedVideoName.value) {
     videoDropError.value = `Errore: il file selezionato (${file.name}) non corrisponde al video originale del progetto: "${expectedVideoName.value}".`;
     return;
   }
 
-   console.log('expectedVideoName:', expectedVideoName.value);
+  console.log('expectedVideoName:', expectedVideoName.value);
   console.log('file.name:', file.name);
   console.log('currentProject:', JSON.stringify(currentProject.value));
 
@@ -580,7 +664,6 @@ onMounted(() => {
   const backupId = localStorage.getItem('currentProjectId')
 
   if (projectFromState) {
-    // Prima di assegnare, forziamo il parsing se data è una stringa
     let cleanData = projectFromState.data;
     try {
       while (typeof cleanData === 'string' && cleanData.trim().startsWith('{')) {
@@ -590,7 +673,6 @@ onMounted(() => {
       console.error("Errore parsing dati in onMounted", e);
     }
 
-    // Assegniamo l'oggetto pulito
     currentProject.value = { ...projectFromState, data: cleanData };
     
     localStorage.setItem('currentProjectBackup', JSON.stringify(currentProject.value))
@@ -598,7 +680,7 @@ onMounted(() => {
     localStorage.setItem('currentProjectName', projectFromState.name)
     
     console.log("Progetto caricato correttamente:", currentProject.value);
-  }else if (backupId) {
+  } else if (backupId) {
     const fullBackup = localStorage.getItem('currentProjectBackup')
     if (fullBackup) {
        currentProject.value = JSON.parse(fullBackup)
@@ -700,34 +782,53 @@ watch(videoPlayer, (newPlayer) => {
           </div>
 
           <div class="subtitles-scroll" ref="subtitlesScroll">
-            <template v-for="(subtitle, index) in sidebarSubtitles" :key="index">
-              <div 
-                class="subtitle-block"
-                :class="{ 'subtitle-block-active': isSubtitleActive(index) }"
-                @dblclick="handleSidebarDoubleClick(index)"
-              >
-                <span class="timestamp">{{ subtitle.timestamp }}</span>
-                <p class="testo">{{ subtitle.testo }}</p>
-                <div class="block-actions">
-                  <button class="btn-delete" @click.stop="deleteSubtitle(index)" title="Elimina sottotitolo">Delete</button>
-                  <button class="btn-edit" @click.stop="openEditModal(index)">Edit</button>
-                </div>
-              </div>
 
-              <div
-                v-if="index < sidebarSubtitles.length - 1"
-                class="subtitle-separator"
-              >
-                <div class="separator-line"></div>
-                <div class="separator-actions">
-                  <button class="btn-sep btn-add" @click.stop="addSubtitleBetween(index)">+ add</button>
-                  <button class="btn-sep btn-merge" @click.stop="mergeSubtitles(index)">⊕ merge</button>
-                </div>
-                <div class="separator-line"></div>
-              </div>
+  <!-- ADD BEFORE FIRST -->
+  <div class="subtitle-separator subtitle-separator--edge">
+    <div class="separator-line"></div>
+    <div class="separator-actions">
+      <button class="btn-sep btn-add" @click.stop="addSubtitleAtStart">+ add</button>
+    </div>
+    <div class="separator-line"></div>
+  </div>
 
-            </template>
-          </div>
+  <template v-for="(subtitle, index) in sidebarSubtitles" :key="index">
+    <div 
+      class="subtitle-block"
+      :class="{ 'subtitle-block-active': isSubtitleActive(index) }"
+      @dblclick="handleSidebarDoubleClick(index)"
+    >
+      <span class="timestamp">{{ subtitle.timestamp }}</span>
+      <p class="testo">{{ subtitle.testo }}</p>
+      <div class="block-actions">
+        <button class="btn-delete" @click.stop="deleteSubtitle(index)" title="Elimina sottotitolo">Delete</button>
+        <button class="btn-edit" @click.stop="openEditModal(index)">Edit</button>
+      </div>
+    </div>
+
+    <div
+      v-if="index < sidebarSubtitles.length - 1"
+      class="subtitle-separator"
+    >
+      <div class="separator-line"></div>
+      <div class="separator-actions">
+        <button class="btn-sep btn-add" @click.stop="addSubtitleBetween(index)">+ add</button>
+        <button class="btn-sep btn-merge" @click.stop="mergeSubtitles(index)">⊕ merge</button>
+      </div>
+      <div class="separator-line"></div>
+    </div>
+      </template>
+
+      <!-- ADD AFTER LAST -->
+      <div class="subtitle-separator subtitle-separator--edge">
+        <div class="separator-line"></div>
+        <div class="separator-actions">
+          <button class="btn-sep btn-add" @click.stop="addSubtitleAtEnd">+ add</button>
+        </div>
+        <div class="separator-line"></div>
+      </div>
+
+    </div>
         </div>
 
         <div class="video-area">
@@ -1041,10 +1142,10 @@ h3 { color: rgba(31, 125, 240, 0.918); }
 }
 .badge-orig ~ .subtitles-scroll .subtitle-block { border-left-color: #00aa8c; }
 .subtitle-block:hover { background: #353841; }
-.subtitle-block-active { background: #3a4a5a !important; box-shadow: 0 0 8px rgba(137, 41, 234, 0.6); transform: scale(1.02); }
+.subtitle-block-active { background: #3a4a5a !important; box-shadow: 0 0 8px #00cc9999; transform: scale(1.02); }
 
 .timestamp { display: block; font-weight: bold; color: rgba(31, 125, 240, 0.918); font-size: 0.85rem; margin-bottom: 4px; margin-left: 5px; flex-shrink: 0; }
-.subtitle-block-active .timestamp { color: rgba(137, 41, 234, 0.6); }
+.subtitle-block-active .timestamp { color: #00cc99; }
 .testo { margin: 0 0 6px 5px; color: #fff; line-height: 1.4; font-size: 0.9rem; word-break: break-word; }
 
 .block-actions { display: flex; justify-content: flex-end; gap: 6px; flex-shrink: 0; margin-top: 2px; }
@@ -1053,18 +1154,18 @@ h3 { color: rgba(31, 125, 240, 0.918); }
 .btn-delete:hover { background: rgba(210, 40, 40, 1); color: #fff; transform: translateY(-1px); }
 .btn-edit { background: rgba(31, 125, 240, 0.918); color: #c8dcff; }
 .btn-edit:hover { background: rgba(31, 125, 240, 1); color: #fff; transform: translateY(-1px); }
-.subtitle-block-active .btn-edit { background: rgba(137, 41, 234, 0.75); color: #e8d5ff; }
-.subtitle-block-active .btn-edit:hover { background: rgba(137, 41, 234, 1); color: #fff; }
+.subtitle-block-active .btn-edit { background: rgba(0, 204, 153, 0.75); color: #fff; }
+.subtitle-block-active .btn-edit:hover { background: #00cc99; color: #fff; }
 
-.subtitle-separator { display: flex; align-items: center; gap: 6px; padding: 2px 4px; opacity: 0.25; transition: opacity 0.2s ease; }
+.subtitle-separator { display: flex; align-items: center; gap: 6px; padding: 2px 4px; opacity: 0.6; transition: opacity 0.2s ease; }
 .subtitle-separator:hover { opacity: 1; }
 .separator-line { flex: 1; height: 1px; background: rgba(255, 255, 255, 0.12); }
 .separator-actions { display: flex; gap: 4px; flex-shrink: 0; }
 .btn-sep { padding: 1px 8px; font-size: 0.68rem; font-weight: 600; border: none; border-radius: 3px; cursor: pointer; line-height: 1.6; letter-spacing: 0.02em; transition: all 0.15s ease; white-space: nowrap; }
 .btn-add { background: rgba(31, 125, 240, 0.5); color: #c8dcff; border: 1px solid rgba(31, 125, 240, 0.918); }
 .btn-add:hover { background: rgba(31, 125, 240, 0.9); color: #fff; box-shadow: 0 2px 6px rgba(31, 125, 240, 0.4); }
-.btn-merge { background: rgba(137, 41, 234, 0.35); color: #d9b8ff; border: 1px solid rgba(137, 41, 234, 0.55); }
-.btn-merge:hover { background: rgba(137, 41, 234, 0.8); color: #fff; box-shadow: 0 2px 6px rgba(137, 41, 234, 0.4); }
+.btn-merge { background: rgba(0, 204, 153, 0.2); color: #00cc99; border: 1px solid rgba(0, 204, 153, 0.55); }
+.btn-merge:hover { background: rgba(0, 204, 153, 0.8); color: #fff; box-shadow: 0 2px 6px rgba(0, 204, 153, 0.4); }
 
 .video-area { background-color: rgb(33, 32, 32); display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; overflow: hidden; }
 .video-box { width: 90%; height: 90%; max-height: 90%; position: relative; display: flex; align-items: center; justify-content: center; overflow: hidden; }
