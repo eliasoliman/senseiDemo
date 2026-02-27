@@ -52,6 +52,31 @@ api.interceptors.response.use(
 
 const profile = ref(null);
 const projects = ref([]);
+const sortedProjects = computed(() => {
+  return [...projects.value].sort((a, b) => {
+    let aDate = null;
+    let bDate = null;
+
+    try {
+      let aData = a.data;
+      while (typeof aData === 'string') aData = JSON.parse(aData);
+      aDate = aData?.last_saved ? new Date(aData.last_saved) : null;
+    } catch {}
+
+    try {
+      let bData = b.data;
+      while (typeof bData === 'string') bData = JSON.parse(bData);
+      bDate = bData?.last_saved ? new Date(bData.last_saved) : null;
+    } catch {}
+
+    // Progetti senza last_saved vanno in fondo
+    if (!aDate && !bDate) return 0;
+    if (!aDate) return 1;
+    if (!bDate) return -1;
+
+    return bDate - aDate;
+  });
+});
 const users = ref([]);
 const activeTab = ref('projects');
 const loading = ref(false);
@@ -414,7 +439,7 @@ onMounted(loadDashboard);
 
           <!-- Projects Grid -->
           <div v-else-if="projects.length > 0" class="projects-grid">
-            <div v-for="p in projects" :key="p.id" class="project-card">
+            <div v-for="p in sortedProjects" :key="p.id" class="project-card">
               <div class="project-thumbnail" @click="openProjectDetail(p)" title="View details">
                 <div class="thumb-icon">
                   <svg xmlns="http://www.w3.org/2000/svg" width="42" height="42" fill="currentColor" viewBox="0 0 16 16">
