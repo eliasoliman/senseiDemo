@@ -131,7 +131,7 @@ const processedTranSubtitles = computed(() => {
 
 const isSubtitleActive = (sub) => {
   const time = currentTime.value
-  return time >= sub.start && time <= (sub.start + sub.duration)
+  return time >= sub.start && time < (sub.start + sub.duration)
 }
 
 const handleSubtitleClick = (sub, type) => {
@@ -146,6 +146,9 @@ const handleSubtitleClick = (sub, type) => {
   }
 }
 
+// ── RAF-based playhead sync + lerp autoscroll ────────────────────────────────
+let rafId = null
+
 const updateProgress = () => {
   if (!props.videoRef) return
   const videoElement = props.videoRef.value || props.videoRef
@@ -153,24 +156,46 @@ const updateProgress = () => {
   isPlaying.value = !videoElement.paused
 }
 
-watch(currentTime, (newVal) => {
-  if (!timelineWrapper.value) return
-  const container = timelineWrapper.value
-  const playheadPosition = newVal * props.pixelsPerSecond
-
-  const PAGE_WIDTH = 1150   
-  const SCROLL_STEP = 1140  
-
-  const pageIndex = Math.floor(playheadPosition / PAGE_WIDTH)
-  const targetScroll = pageIndex * SCROLL_STEP
-
-  if (container.scrollLeft !== targetScroll) {
-    container.scrollTo({
-      left: targetScroll,
-      behavior: 'smooth'
-    })
+const lerpScroll = (container, targetScroll) => {
+  const current = container.scrollLeft
+  const diff = targetScroll - current
+  if (Math.abs(diff) < 0.5) {
+    container.scrollLeft = targetScroll
+    return
   }
-})
+  container.scrollLeft = current + diff * 0.12
+}
+
+const startRaf = () => {
+  const loop = () => {
+    updateProgress()
+
+    // Lerp autoscroll during playback
+    if (timelineWrapper.value && isPlaying.value) {
+      const container = timelineWrapper.value
+      const containerWidth = container.clientWidth
+      const playheadPosition = currentTime.value * props.pixelsPerSecond
+      const visibleEnd = container.scrollLeft + containerWidth
+      const margin = containerWidth * 0.25
+
+      if (playheadPosition > visibleEnd - margin) {
+        const targetScroll = playheadPosition - containerWidth * 0.4
+        lerpScroll(container, targetScroll)
+      }
+    }
+
+    rafId = requestAnimationFrame(loop)
+  }
+  rafId = requestAnimationFrame(loop)
+}
+
+const stopRaf = () => {
+  if (rafId) {
+    cancelAnimationFrame(rafId)
+    rafId = null
+  }
+}
+// ────────────────────────────────────────────────────────────────────────────
 
 watch(() => props.pixelsPerSecond, () => {
   if (timelineWrapper.value && props.videoRef) {
@@ -346,9 +371,29 @@ const waveformWidth = computed(() => {
 onMounted(() => {
   if (props.videoRef) {
     const videoElement = props.videoRef.value || props.videoRef
-    videoElement.addEventListener('timeupdate', updateProgress)
-    videoElement.addEventListener('play', updateProgress)
-    videoElement.addEventListener('pause', updateProgress)
+
+    videoElement.addEventListener('play', () => {
+      isPlaying.value = true
+      startRaf()
+    })
+    videoElement.addEventListener('pause', () => {
+      isPlaying.value = false
+      stopRaf()
+      updateProgress()
+    })
+    videoElement.addEventListener('seeked', () => {
+      updateProgress()
+      // Scroll the timeline to show the playhead after a manual seek
+      if (timelineWrapper.value) {
+        const container = timelineWrapper.value
+        const containerWidth = container.clientWidth
+        const playheadPosition = videoElement.currentTime * props.pixelsPerSecond
+        container.scrollTo({
+          left: Math.max(0, playheadPosition - containerWidth * 0.3),
+          behavior: 'smooth'
+        })
+      }
+    })
     videoElement.addEventListener('loadedmetadata', () => {
       videoSrc.value = getVideoSrc()
     })
@@ -359,11 +404,12 @@ onMounted(() => {
 })
 
 onUnmounted(() => {
+  stopRaf()
   if (props.videoRef) {
     const videoElement = props.videoRef.value || props.videoRef
-    videoElement.removeEventListener('timeupdate', updateProgress)
-    videoElement.removeEventListener('play', updateProgress)
-    videoElement.removeEventListener('pause', updateProgress)
+    videoElement.removeEventListener('play', startRaf)
+    videoElement.removeEventListener('pause', stopRaf)
+    videoElement.removeEventListener('seeked', updateProgress)
   }
   document.removeEventListener('mousemove', handleMouseMove)
   document.removeEventListener('mouseup', handleMouseUp)

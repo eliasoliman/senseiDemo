@@ -261,7 +261,7 @@ const getActiveSubtitleIndex = () => {
       duration = end - start
     }
     
-    if (currentTime.value >= start && currentTime.value <= start + duration) {
+    if (currentTime.value >= start && currentTime.value < start + duration) {
       return i
     }
   }
@@ -565,7 +565,8 @@ const handleSave = async () => {
             ...currentData,
             srt1,
             srt2,
-            playhead: 0
+            playhead: currentTime.value,
+            last_saved: new Date().toISOString()
           })
         })
       }
@@ -651,6 +652,13 @@ const loadVideoFile = (file) => {
   showVideoDropModal.value = false
   nextTick(() => {
     setupVideoSync()
+
+    const savedPlayhead = currentProject.value?.data?.playhead
+    if (savedPlayhead && savedPlayhead > 0 && videoPlayer.value) {
+      videoPlayer.value.addEventListener('loadedmetadata', () => {
+        videoPlayer.value.currentTime = savedPlayhead
+      }, { once: true })
+    }
   })
 }
 

@@ -166,6 +166,16 @@ function handleFileInput(event) {
 }
 
 function handleCreate() {
+  // Validazione select obbligatorie
+  if (!targetLanguage.value) {
+    alert('Seleziona la lingua di destinazione.');
+    return;
+  }
+  if (isAzureMode.value && !sourceLanguage.value) {
+    alert('Seleziona la lingua sorgente.');
+    return;
+  }
+
   if (!isLogged()) {
     localStorage.setItem('pendingProject', JSON.stringify({
       savedProjectName: projectName.value,
@@ -386,10 +396,18 @@ async function createProject() {
     console.log(`[NewProject] SRT tradotto: ${tranSubtitles.length} blocchi. Primi 2:`, tranSubtitles.slice(0, 2));
 
     console.log('[NewProject] Salvataggio progetto su API admin...');
+    const now = new Date().toISOString();
     const projectRes = await apiAdmin.post('/projects', {
-      name: projectName.value,
-      data: JSON.stringify({ srt1, srt2, playhead: 0, videoName: videoFile.value.name })
-    });
+        name: projectName.value,
+        data: JSON.stringify({ 
+          srt1, 
+          srt2, 
+          playhead: 0, 
+          videoName: videoFile.value.name,
+          created_at: now,
+          last_saved: now
+        })
+      });
 
     const createdProject = projectRes.data;
     console.log('[NewProject] Progetto salvato:', createdProject);
