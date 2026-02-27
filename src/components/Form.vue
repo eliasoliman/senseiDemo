@@ -19,19 +19,18 @@
         <p v-if="!videoFile">Drop your video source here or <span class="browse-link">browse</span></p>
         <p v-else>Selected file: {{ videoFile.name }}</p>
       </div>
-        <div v-if="isAzureMode">
-          <p>Source language</p>
-          <select class="form-select mb-3" v-model="sourceLanguage">
-            <option value="">Select source language</option>
-            <option value="de">German</option>
-            <option value="en">English</option>
-            <option value="es">Spanish</option>
-            <option value="it">Italian</option>
-          </select>
-        </div>
+      <p>Source language</p>
+      <select class="form-select mb-3" v-model="sourceLanguage">
+        <option value="auto" v-if="!isAzureMode" selected="selected">[Auto-detect]</option>
+        <option value="" v-else>[Select source language]</option>
+        <option value="de">German</option>
+        <option value="en">English</option>
+        <option value="es">Spanish</option>
+        <option value="it">Italian</option>
+      </select>
       <p>Target language</p>
       <select class="form-select mb-3" v-model="targetLanguage">
-        <option value="">Select the language</option>
+        <option value="">[Select the language]</option>
         <option value="de">German</option>
         <option value="en">English</option>
         <option value="es">Spanish</option>
@@ -91,9 +90,9 @@ let tranSubtitles = []
 const transcribingProgress = ref(0)
 const translatingProgress = ref(0)
 
-const sourceLanguage = ref('')
 const envValue = import.meta.env.VITE_REQUIRE_SOURCE_LANG
 const isAzureMode = computed(() => envValue === 'true')
+const sourceLanguage = ref(isAzureMode.value ? "" : "auto")
 
 const WHISPER_BASE = import.meta.env.VITE_WHISPER_BASE;
 const WHISPER_TOKEN = import.meta.env.VITE_WHISPER_TOKEN || '';
