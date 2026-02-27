@@ -131,7 +131,7 @@ const processedTranSubtitles = computed(() => {
 
 const isSubtitleActive = (sub) => {
   const time = currentTime.value
-  return time >= sub.start && time < (sub.start + sub.duration)
+  return time >= sub.start && time <= (sub.start + sub.duration)
 }
 
 const handleSubtitleClick = (sub, type) => {
@@ -146,7 +146,7 @@ const handleSubtitleClick = (sub, type) => {
   }
 }
 
-// ── RAF-based playhead sync + lerp autoscroll ────────────────────────────────
+// ── RAF-based playhead sync ──────────────────────────────────────────────────
 let rafId = null
 
 const updateProgress = () => {
@@ -156,34 +156,9 @@ const updateProgress = () => {
   isPlaying.value = !videoElement.paused
 }
 
-const lerpScroll = (container, targetScroll) => {
-  const current = container.scrollLeft
-  const diff = targetScroll - current
-  if (Math.abs(diff) < 0.5) {
-    container.scrollLeft = targetScroll
-    return
-  }
-  container.scrollLeft = current + diff * 0.12
-}
-
 const startRaf = () => {
   const loop = () => {
     updateProgress()
-
-    // Lerp autoscroll during playback
-    if (timelineWrapper.value && isPlaying.value) {
-      const container = timelineWrapper.value
-      const containerWidth = container.clientWidth
-      const playheadPosition = currentTime.value * props.pixelsPerSecond
-      const visibleEnd = container.scrollLeft + containerWidth
-      const margin = containerWidth * 0.25
-
-      if (playheadPosition > visibleEnd - margin) {
-        const targetScroll = playheadPosition - containerWidth * 0.4
-        lerpScroll(container, targetScroll)
-      }
-    }
-
     rafId = requestAnimationFrame(loop)
   }
   rafId = requestAnimationFrame(loop)
@@ -196,6 +171,24 @@ const stopRaf = () => {
   }
 }
 // ────────────────────────────────────────────────────────────────────────────
+
+watch(currentTime, (newVal) => {
+  if (!timelineWrapper.value || !isPlaying.value) return
+  const container = timelineWrapper.value
+  const containerWidth = container.clientWidth
+  const playheadPosition = newVal * props.pixelsPerSecond
+
+  const visibleStart = container.scrollLeft
+  const visibleEnd = visibleStart + containerWidth
+  const margin = containerWidth * 0.15
+
+  if (playheadPosition > visibleEnd - margin) {
+    container.scrollTo({
+      left: playheadPosition - margin,
+      behavior: 'instant'
+    })
+  }
+})
 
 watch(() => props.pixelsPerSecond, () => {
   if (timelineWrapper.value && props.videoRef) {
