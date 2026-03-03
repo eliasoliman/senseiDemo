@@ -49,6 +49,8 @@ const expectedVideoName = computed(() => {
   return d.videoName || (d.data && d.data.videoName) || '';
 });
 
+const projectName = computed(() => currentProject.value?.name || 'project')
+
 // --- FIX 2: WATCHER PER PULIRE I DATI APPENA ARRIVANO ---
 watch(currentProject, (newVal) => {
   if (newVal && newVal.data && typeof newVal.data === 'string') {
@@ -65,7 +67,7 @@ watch(currentProject, (newVal) => {
 }, { immediate: true, deep: true });
 
 // Which track is shown in the sidebar: 'tran' (Track 1) or 'orig' (Track 2)
-const activeSidebarTrack = ref('tran')
+const activeSidebarTrack = ref('orig')
 
 const sidebarSubtitles = computed(() =>
   activeSidebarTrack.value === 'tran' ? tranSubtitles.value : subtitles.value
@@ -128,7 +130,7 @@ const parseSrtTimestampEnd = (timestampStr) => {
   const endTime = timestampStr.split('-->')[1].trim().replace(',', '.')
   const parts = endTime.split(':').map(Number)
   if (parts.length === 3) {
-    return (parts[0] * 3600) + (parts[1] * 60) + parts[2]
+    return (parts[0] * 3600) + (parts[1] * 60) + (parts[2] -0.001)
   }
   return 0
 }
@@ -287,6 +289,46 @@ const activeSubtitleText = computed(() => {
   return ''
 })
 
+const sourceLanguage = computed(() => {
+  if (!currentProject.value?.data) return ''
+  let d = currentProject.value.data
+  try {
+    while (typeof d === 'string') d = JSON.parse(d)
+  } catch (e) { return '' }
+  return d.sourceLanguage || ''
+})
+
+const targetLanguage = computed(() => {
+  if (!currentProject.value?.data) return ''
+  let d = currentProject.value.data
+  try {
+    while (typeof d === 'string') d = JSON.parse(d)
+  } catch (e) { return '' }
+  return d.targetLanguage || ''
+})
+
+const isEditingName = ref(false)
+const editingName = ref('')
+
+const startEditName = () => {
+  editingName.value = projectName.value
+  isEditingName.value = true
+  nextTick(() => {
+    document.getElementById('project-name-input')?.focus()
+  })
+}
+
+const confirmEditName = async () => {
+  if (!editingName.value.trim()) return
+  currentProject.value = { ...currentProject.value, name: editingName.value.trim() }
+  isEditingName.value = false
+  await handleSave()
+}
+
+const cancelEditName = () => {
+  isEditingName.value = false
+}
+
 const handleExport = () => {
   const downloadSrt = (content, filename) => {
     const blob = new Blob([content], { type: 'text/plain;charset=utf-8' })
@@ -298,8 +340,14 @@ const handleExport = () => {
     URL.revokeObjectURL(url)
   }
 
-  downloadSrt(arrayToSrt(tranSubtitles.value), 'srt_translated.srt')
-  downloadSrt(arrayToSrt(subtitles.value), 'srt_original.srt')
+  handleSave()
+
+  const projectName = currentProject.value?.name || 'project'
+  const today = new Date()
+  const date = `${String(today.getDate()).padStart(2, '0')}-${String(today.getMonth() + 1).padStart(2, '0')}-${today.getFullYear()}`
+
+  downloadSrt(arrayToSrt(tranSubtitles.value), `${projectName}_${targetLanguage.value}_${date}.srt`)
+  downloadSrt(arrayToSrt(subtitles.value), `${projectName}_${sourceLanguage.value}_${date}.srt`)
 }
 
 const scrollSidebarToActive = () => {
@@ -748,6 +796,26 @@ watch(videoPlayer, (newPlayer) => {
   <div class="wrapper">
     <header class="header fixed-top p-3 d-flex justify-content-between align-items-center">
       <h3 class="mb-0">Sensei</h3>
+
+      <div style="position: absolute; left: 50%; transform: translateX(-50%);">
+        <input
+          v-if="isEditingName"
+          id="project-name-input"
+          v-model="editingName"
+          @blur="confirmEditName"
+          @keyup.enter="confirmEditName"
+          @keyup.escape="cancelEditName"
+          style="background: transparent; border: none; border-bottom: 1px solid #4a90e2; color: #f1f5f9; font-size: 0.85rem; text-align: center; outline: none; width: 200px;"
+        />
+        <h6
+          v-else
+          @click="startEditName"
+          style="margin: 0; color: #94a3b8; font-size: 0.85rem; cursor: pointer;"
+          title="Click to rename"
+        >
+          {{ projectName }}
+        </h6>
+      </div>
       <nav class="nav">
         <button class="btn-save" @click="handleSave" :disabled="isSaving">
           <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" fill="currentColor" viewBox="0 0 16 16">
@@ -757,10 +825,7 @@ watch(videoPlayer, (newPlayer) => {
         </button>
 
         <button class="btn-back" @click="handleBack">
-          <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" fill="currentColor" viewBox="0 0 16 16">
-            <path fill-rule="evenodd" d="M15 8a.5.5 0 0 0-.5-.5H2.707l3.147-3.146a.5.5 0 1 0-.708-.708l-4 4a.5.5 0 0 0 0 .708l4 4a.5.5 0 0 0 .708-.708L2.707 8.5H14.5A.5.5 0 0 0 15 8z"/>
-          </svg>
-          Back
+          Home
         </button>
         
         <button class="btn-export" @click="handleExport">

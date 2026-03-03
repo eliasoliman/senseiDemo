@@ -302,7 +302,6 @@ async function createProject() {
       },
       params
     });
-
     const jobId = conversionJob.data.id;
     console.log('[NewProject] Job avviato, ID:', jobId, '| Risposta completa:', conversionJob.data);
 
@@ -357,6 +356,19 @@ async function createProject() {
       throw new Error('Timeout: conversione non completata');
     }
 
+    if (!isAzureMode.value) {
+  try {
+    const sourceResponse = await axios.get(
+      `${WHISPER_BASE}/conversion-lang?id=${jobId}`,
+      { headers: { 'Authorization': tokenBearer } }
+    );
+    sourceLanguage.value = sourceResponse.data;
+    console.log('[NewProject] Lingua sorgente rilevata:', sourceLanguage.value);
+  } catch (e) {
+    console.warn('[NewProject] Impossibile recuperare la lingua sorgente:', e.message);
+  }
+}
+
     // --- SRT ORIGINALE ---
     console.log('[NewProject] Recupero SRT originale da:', `${apiConversionOut}?id=${jobId}`);
     const originalResponse = await axios.get(`${apiConversionOut}?id=${jobId}`, {
@@ -404,6 +416,8 @@ async function createProject() {
           srt2, 
           playhead: 0, 
           videoName: videoFile.value.name,
+          sourceLanguage: sourceLanguage.value,
+          targetLanguage: targetLanguage.value,
           created_at: now,
           last_saved: now
         })
