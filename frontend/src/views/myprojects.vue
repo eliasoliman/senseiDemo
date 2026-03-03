@@ -324,6 +324,27 @@ const updateUser = async () => {
   }
 };
 
+const getParsedData = (project) => {
+  try {
+    let data = project.data;
+    while (typeof data === 'string') data = JSON.parse(data);
+    return data || {};
+  } catch {
+    return {};
+  }
+};
+
+const formatDate = (dateStr) => {
+  if (!dateStr) return '';
+  try {
+    return new Date(dateStr).toLocaleDateString(undefined, {
+      day: '2-digit', month: 'short', year: 'numeric'
+    });
+  } catch {
+    return dateStr;
+  }
+};
+
 const confirmDeleteUser = (id) => {
   deleteConfirmUserId.value = id;
 };
@@ -458,7 +479,30 @@ onMounted(loadDashboard);
               <div class="project-info">
                 <h3 class="project-name">{{ p.name }}</h3>
                 <p class="project-id">#{{ p.id }}</p>
-                <p v-if="p.data" class="project-data">{{ p.data }}</p>
+                <div v-if="p.data" class="project-meta">
+                  <div class="project-langs">
+                    <span class="lang-tag">{{ getParsedData(p).sourceLanguage || '—' }}</span>
+                    <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" fill="currentColor" viewBox="0 0 16 16" class="lang-arrow">
+                      <path fill-rule="evenodd" d="M1 8a.5.5 0 0 1 .5-.5h11.793l-3.147-3.146a.5.5 0 0 1 .708-.708l4 4a.5.5 0 0 1 0 .708l-4 4a.5.5 0 0 1-.708-.708L13.293 8.5H1.5A.5.5 0 0 1 1 8z"/>
+                    </svg>
+                    <span class="lang-tag">{{ getParsedData(p).targetLanguage || '—' }}</span>
+                  </div>
+                  <div class="project-dates">
+                    <span v-if="getParsedData(p).created_at" class="date-item">
+                      <svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" fill="currentColor" viewBox="0 0 16 16">
+                        <path d="M3.5 0a.5.5 0 0 1 .5.5V1h8V.5a.5.5 0 0 1 1 0V1h1a2 2 0 0 1 2 2v11a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2V3a2 2 0 0 1 2-2h1V.5a.5.5 0 0 1 .5-.5zM2 2a1 1 0 0 0-1 1v1h14V3a1 1 0 0 0-1-1H2zm13 3H1v9a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V5z"/>
+                      </svg>
+                      {{ formatDate(getParsedData(p).created_at) }}
+                    </span>
+                    <span v-if="getParsedData(p).last_saved" class="date-item date-saved">
+                      <svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" fill="currentColor" viewBox="0 0 16 16">
+                        <path d="M8 3.5a.5.5 0 0 0-1 0V9a.5.5 0 0 0 .252.434l3.5 2a.5.5 0 0 0 .496-.868L8 8.71V3.5z"/>
+                        <path d="M8 16A8 8 0 1 0 8 0a8 8 0 0 0 0 16zm7-8A7 7 0 1 1 1 8a7 7 0 0 1 14 0z"/>
+                      </svg>
+                      {{ formatDate(getParsedData(p).last_saved) }}
+                    </span>
+                  </div>
+                </div>
               </div>
             </div>
           </div>
@@ -1009,6 +1053,53 @@ onMounted(loadDashboard);
 
 .project-thumbnail:hover .thumb-icon {
   opacity: 0;
+}
+.project-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.project-langs {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.lang-tag {
+  background: rgba(59, 130, 246, 0.12);
+  color: #60a5fa;
+  border: 1px solid rgba(59, 130, 246, 0.25);
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.3px;
+}
+
+.lang-arrow {
+  color: #475569;
+  flex-shrink: 0;
+}
+
+.project-dates {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.date-item {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11px;
+  color: #475569;
+}
+
+.date-saved {
+  color: #4ade80;
+  opacity: 0.75;
 }
 
 /* ── Project Modal ─────────────────────────────────────────────────────────── */

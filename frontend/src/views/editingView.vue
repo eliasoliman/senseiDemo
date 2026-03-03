@@ -34,18 +34,11 @@ const isPlayingSelectedSubtitle = ref(false)
 // --- FIX 1: RECUPERO NOME VIDEO CON PARSING RICORSIVO ---
 const expectedVideoName = computed(() => {
   if (!currentProject.value) return '';
-
   let d = currentProject.value.data;
   if (!d) return '';
-
   try {
-    while (typeof d === 'string') {
-      d = JSON.parse(d);
-    }
-  } catch (e) {
-    return '';
-  }
-
+    while (typeof d === 'string') { d = JSON.parse(d); }
+  } catch (e) { return ''; }
   return d.videoName || (d.data && d.data.videoName) || '';
 });
 
@@ -56,17 +49,12 @@ watch(currentProject, (newVal) => {
   if (newVal && newVal.data && typeof newVal.data === 'string') {
     try {
       let d = newVal.data;
-      while (typeof d === 'string' && d.startsWith('{')) { 
-        d = JSON.parse(d); 
-      }
+      while (typeof d === 'string' && d.startsWith('{')) { d = JSON.parse(d); }
       currentProject.value = { ...newVal, data: d };
-    } catch (e) {
-      console.warn("Errore parsing watcher dati", e);
-    }
+    } catch (e) { console.warn("Errore parsing watcher dati", e); }
   }
 }, { immediate: true, deep: true });
 
-// Which track is shown in the sidebar: 'tran' (Track 1) or 'orig' (Track 2)
 const activeSidebarTrack = ref('orig')
 
 const sidebarSubtitles = computed(() =>
@@ -82,9 +70,7 @@ const saveUndoSnapshot = () => {
     subtitles: JSON.parse(JSON.stringify(subtitles.value))
   }
   undoStack.value.push(snapshot)
-  if (undoStack.value.length > MAX_UNDO) {
-    undoStack.value.shift()
-  }
+  if (undoStack.value.length > MAX_UNDO) undoStack.value.shift()
 }
 
 const undo = () => {
@@ -102,10 +88,7 @@ provide('saveUndoSnapshot', saveUndoSnapshot)
 
 const showModal = ref(false)
 const editingIndex = ref(-1)
-const editForm = ref({
-  timestamp: '',
-  testo: ''
-})
+const editForm = ref({ timestamp: '', testo: '' })
 
 const calculatedWidth = computed(() => {
   if (videoDuration.value === 0) return 1200
@@ -119,9 +102,7 @@ const parseSrtTimestamp = (timestampStr) => {
   if (!timestampStr) return 0
   const startTime = timestampStr.split('-->')[0].trim().replace(',', '.')
   const parts = startTime.split(':').map(Number)
-  if (parts.length === 3) {
-    return (parts[0] * 3600) + (parts[1] * 60) + parts[2]
-  }
+  if (parts.length === 3) return (parts[0] * 3600) + (parts[1] * 60) + parts[2]
   return 0
 }
 
@@ -129,9 +110,7 @@ const parseSrtTimestampEnd = (timestampStr) => {
   if (!timestampStr || !timestampStr.includes('-->')) return 0
   const endTime = timestampStr.split('-->')[1].trim().replace(',', '.')
   const parts = endTime.split(':').map(Number)
-  if (parts.length === 3) {
-    return (parts[0] * 3600) + (parts[1] * 60) + (parts[2] -0.001)
-  }
+  if (parts.length === 3) return (parts[0] * 3600) + (parts[1] * 60) + (parts[2] - 0.001)
   return 0
 }
 
@@ -143,21 +122,18 @@ const formatSrtTimestamp = (seconds) => {
   return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')},${String(ms).padStart(3, '0')}`
 }
 
-const buildTimestamp = (startSec, endSec) => {
-  return `${formatSrtTimestamp(startSec)} --> ${formatSrtTimestamp(endSec)}`
-}
+const buildTimestamp = (startSec, endSec) => `${formatSrtTimestamp(startSec)} --> ${formatSrtTimestamp(endSec)}`
+
+// ─── ADD ─────────────────────────────────────────────────────────────────────
 
 const addSubtitleBetween = (index) => {
   saveUndoSnapshot()
   const DEFAULT_DURATION = 0.4
   const targetArray = activeSidebarTrack.value === 'tran' ? tranSubtitles : subtitles
-
   const prev = targetArray.value[index]
   const next = targetArray.value[index + 1]
-
   const newStart = parseSrtTimestampEnd(prev.timestamp)
   const newEnd = newStart + DEFAULT_DURATION
-
   if (next) {
     const nextStart = parseSrtTimestamp(next.timestamp)
     const nextEnd = parseSrtTimestampEnd(next.timestamp)
@@ -167,13 +143,7 @@ const addSubtitleBetween = (index) => {
       next.timestamp = buildTimestamp(adjustedNextStart, adjustedNextEnd)
     }
   }
-
-  const newSub = {
-    timestamp: buildTimestamp(newStart, newEnd),
-    testo: ''
-  }
-
-  targetArray.value.splice(index + 1, 0, newSub)
+  targetArray.value.splice(index + 1, 0, { timestamp: buildTimestamp(newStart, newEnd), testo: '' })
   localStorage.setItem(activeSidebarTrack.value === 'tran' ? 'tranSubtitles' : 'subtitles', JSON.stringify(targetArray.value))
 }
 
@@ -181,47 +151,78 @@ const addSubtitleAtStart = () => {
   saveUndoSnapshot()
   const targetArray = activeSidebarTrack.value === 'tran' ? tranSubtitles : subtitles
   const DEFAULT_DURATION = 0.5
-
-  const newSub = {
-    timestamp: buildTimestamp(0, DEFAULT_DURATION),
-    testo: ''
-  }
-
   if (targetArray.value.length > 0) {
     const first = targetArray.value[0]
     const firstEnd = parseSrtTimestampEnd(first.timestamp)
-    if (firstEnd > DEFAULT_DURATION) {
-      first.timestamp = buildTimestamp(DEFAULT_DURATION, firstEnd)
-    }
+    if (firstEnd > DEFAULT_DURATION) first.timestamp = buildTimestamp(DEFAULT_DURATION, firstEnd)
   }
-
-  targetArray.value.unshift(newSub)
-  localStorage.setItem(
-    activeSidebarTrack.value === 'tran' ? 'tranSubtitles' : 'subtitles',
-    JSON.stringify(targetArray.value)
-  )
+  targetArray.value.unshift({ timestamp: buildTimestamp(0, DEFAULT_DURATION), testo: '' })
+  localStorage.setItem(activeSidebarTrack.value === 'tran' ? 'tranSubtitles' : 'subtitles', JSON.stringify(targetArray.value))
 }
 
 const addSubtitleAtEnd = () => {
   saveUndoSnapshot()
   const targetArray = activeSidebarTrack.value === 'tran' ? tranSubtitles : subtitles
   const DEFAULT_DURATION = 0.5
-
   const lastEnd = targetArray.value.length > 0
     ? parseSrtTimestampEnd(targetArray.value[targetArray.value.length - 1].timestamp) + 0.1
     : 0
-
-  const newSub = {
-    timestamp: buildTimestamp(lastEnd, lastEnd + DEFAULT_DURATION),
-    testo: ''
-  }
-
-  targetArray.value.push(newSub)
-  localStorage.setItem(
-    activeSidebarTrack.value === 'tran' ? 'tranSubtitles' : 'subtitles',
-    JSON.stringify(targetArray.value)
-  )
+  targetArray.value.push({ timestamp: buildTimestamp(lastEnd, lastEnd + DEFAULT_DURATION), testo: '' })
+  localStorage.setItem(activeSidebarTrack.value === 'tran' ? 'tranSubtitles' : 'subtitles', JSON.stringify(targetArray.value))
 }
+
+// ─── DUPLICATE ───────────────────────────────────────────────────────────────
+
+const duplicateSubtitleBetween = (index) => {
+  saveUndoSnapshot()
+  const DEFAULT_DURATION = 0.4
+  const targetArray = activeSidebarTrack.value === 'tran' ? tranSubtitles : subtitles
+  const prev = targetArray.value[index]
+  const next = targetArray.value[index + 1]
+  const newStart = parseSrtTimestampEnd(prev.timestamp)
+  const newEnd = newStart + DEFAULT_DURATION
+  if (next) {
+    const nextStart = parseSrtTimestamp(next.timestamp)
+    const nextEnd = parseSrtTimestampEnd(next.timestamp)
+    if (newEnd > nextStart) {
+      const adjustedNextStart = newEnd
+      const adjustedNextEnd = Math.max(nextEnd, adjustedNextStart + 0.001)
+      next.timestamp = buildTimestamp(adjustedNextStart, adjustedNextEnd)
+    }
+  }
+  targetArray.value.splice(index + 1, 0, { timestamp: buildTimestamp(newStart, newEnd), testo: prev.testo })
+  localStorage.setItem(activeSidebarTrack.value === 'tran' ? 'tranSubtitles' : 'subtitles', JSON.stringify(targetArray.value))
+}
+
+const duplicateSubtitleAtStart = () => {
+  saveUndoSnapshot()
+  const targetArray = activeSidebarTrack.value === 'tran' ? tranSubtitles : subtitles
+  const DEFAULT_DURATION = 0.5
+  const sourceText = targetArray.value.length > 0 ? targetArray.value[0].testo : ''
+  if (targetArray.value.length > 0) {
+    const first = targetArray.value[0]
+    const firstEnd = parseSrtTimestampEnd(first.timestamp)
+    if (firstEnd > DEFAULT_DURATION) first.timestamp = buildTimestamp(DEFAULT_DURATION, firstEnd)
+  }
+  targetArray.value.unshift({ timestamp: buildTimestamp(0, DEFAULT_DURATION), testo: sourceText })
+  localStorage.setItem(activeSidebarTrack.value === 'tran' ? 'tranSubtitles' : 'subtitles', JSON.stringify(targetArray.value))
+}
+
+const duplicateSubtitleAtEnd = () => {
+  saveUndoSnapshot()
+  const targetArray = activeSidebarTrack.value === 'tran' ? tranSubtitles : subtitles
+  const DEFAULT_DURATION = 0.5
+  const sourceText = targetArray.value.length > 0
+    ? targetArray.value[targetArray.value.length - 1].testo
+    : ''
+  const lastEnd = targetArray.value.length > 0
+    ? parseSrtTimestampEnd(targetArray.value[targetArray.value.length - 1].timestamp) + 0.1
+    : 0
+  targetArray.value.push({ timestamp: buildTimestamp(lastEnd, lastEnd + DEFAULT_DURATION), testo: sourceText })
+  localStorage.setItem(activeSidebarTrack.value === 'tran' ? 'tranSubtitles' : 'subtitles', JSON.stringify(targetArray.value))
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 
 const mergeSubtitles = (index) => {
   saveUndoSnapshot()
@@ -229,43 +230,31 @@ const mergeSubtitles = (index) => {
   const a = targetArray.value[index]
   const b = targetArray.value[index + 1]
   if (!a || !b) return
-
   const startSec = parseSrtTimestamp(a.timestamp)
   const endSec = parseSrtTimestampEnd(b.timestamp)
-
   const merged = {
     timestamp: buildTimestamp(startSec, endSec),
     testo: [a.testo, b.testo].filter(t => t.trim()).join(' ')
   }
-
   targetArray.value.splice(index, 2, merged)
   localStorage.setItem(activeSidebarTrack.value === 'tran' ? 'tranSubtitles' : 'subtitles', JSON.stringify(targetArray.value))
-
-  if (selectedSubtitleIndex.value === index + 1) {
-    selectedSubtitleIndex.value = index
-  } else if (selectedSubtitleIndex.value > index + 1) {
-    selectedSubtitleIndex.value--
-  }
+  if (selectedSubtitleIndex.value === index + 1) selectedSubtitleIndex.value = index
+  else if (selectedSubtitleIndex.value > index + 1) selectedSubtitleIndex.value--
 }
 
 const getActiveSubtitleIndex = () => {
   const arr = sidebarSubtitles.value
   if (!arr || arr.length === 0) return -1
-  
   for (let i = 0; i < arr.length; i++) {
     const sub = arr[i]
     const start = parseSrtTimestamp(sub.timestamp)
-    
-    let duration = 2 
+    let duration = 2
     if (sub.timestamp.includes('-->')) {
       const parts = sub.timestamp.split('-->')
       const end = parseSrtTimestamp(parts[1].trim())
       duration = end - start
     }
-    
-    if (currentTime.value >= start && currentTime.value < start + duration) {
-      return i
-    }
+    if (currentTime.value >= start && currentTime.value < start + duration) return i
   }
   return -1
 }
@@ -282,9 +271,7 @@ const activeSubtitleText = computed(() => {
       const end = parseSrtTimestamp(parts[1].trim())
       duration = end - start
     }
-    if (currentTime.value >= start && currentTime.value <= start + duration) {
-      return sub.testo || ''
-    }
+    if (currentTime.value >= start && currentTime.value <= start + duration) return sub.testo || ''
   }
   return ''
 })
@@ -292,18 +279,14 @@ const activeSubtitleText = computed(() => {
 const sourceLanguage = computed(() => {
   if (!currentProject.value?.data) return ''
   let d = currentProject.value.data
-  try {
-    while (typeof d === 'string') d = JSON.parse(d)
-  } catch (e) { return '' }
+  try { while (typeof d === 'string') d = JSON.parse(d) } catch (e) { return '' }
   return d.sourceLanguage || ''
 })
 
 const targetLanguage = computed(() => {
   if (!currentProject.value?.data) return ''
   let d = currentProject.value.data
-  try {
-    while (typeof d === 'string') d = JSON.parse(d)
-  } catch (e) { return '' }
+  try { while (typeof d === 'string') d = JSON.parse(d) } catch (e) { return '' }
   return d.targetLanguage || ''
 })
 
@@ -313,9 +296,7 @@ const editingName = ref('')
 const startEditName = () => {
   editingName.value = projectName.value
   isEditingName.value = true
-  nextTick(() => {
-    document.getElementById('project-name-input')?.focus()
-  })
+  nextTick(() => { document.getElementById('project-name-input')?.focus() })
 }
 
 const confirmEditName = async () => {
@@ -325,9 +306,7 @@ const confirmEditName = async () => {
   await handleSave()
 }
 
-const cancelEditName = () => {
-  isEditingName.value = false
-}
+const cancelEditName = () => { isEditingName.value = false }
 
 const handleExport = () => {
   const downloadSrt = (content, filename) => {
@@ -339,55 +318,37 @@ const handleExport = () => {
     a.click()
     URL.revokeObjectURL(url)
   }
-
   handleSave()
-
-  const projectName = currentProject.value?.name || 'project'
+  const pName = currentProject.value?.name || 'project'
   const today = new Date()
   const date = `${String(today.getDate()).padStart(2, '0')}-${String(today.getMonth() + 1).padStart(2, '0')}-${today.getFullYear()}`
-
-  downloadSrt(arrayToSrt(tranSubtitles.value), `${projectName}_${targetLanguage.value}_${date}.srt`)
-  downloadSrt(arrayToSrt(subtitles.value), `${projectName}_${sourceLanguage.value}_${date}.srt`)
+  downloadSrt(arrayToSrt(tranSubtitles.value), `${pName}_${targetLanguage.value}_${date}.srt`)
+  downloadSrt(arrayToSrt(subtitles.value), `${pName}_${sourceLanguage.value}_${date}.srt`)
 }
 
 const scrollSidebarToActive = () => {
   if (!subtitlesScroll.value || !isPlaying.value) return
-  
   const activeIndex = getActiveSubtitleIndex()
-  if (activeIndex < 0) return
-  if (activeIndex < 3) return
-  
+  if (activeIndex < 0 || activeIndex < 3) return
   const container = subtitlesScroll.value
   const blocks = container.querySelectorAll('.subtitle-block')
-  
   if (blocks[activeIndex]) {
     const block = blocks[activeIndex]
-    const containerHeight = container.clientHeight
-    const blockTop = block.offsetTop
-    const blockHeight = block.clientHeight
-    const targetScroll = blockTop - (containerHeight / 2) + (blockHeight / 2)
-    
-    container.scrollTo({
-      top: Math.max(0, targetScroll),
-      behavior: 'smooth'
-    })
+    const targetScroll = block.offsetTop - (container.clientHeight / 2) + (block.clientHeight / 2)
+    container.scrollTo({ top: Math.max(0, targetScroll), behavior: 'smooth' })
   }
 }
 
-const isSubtitleActive = (index) => {
-  return getActiveSubtitleIndex() === index
-}
+const isSubtitleActive = (index) => getActiveSubtitleIndex() === index
 
 const checkSubtitleEnd = () => {
   if (selectedSubtitleIndex.value >= 0 && isPlayingSelectedSubtitle.value) {
     const arr = sidebarSubtitles.value
     const sub = arr[selectedSubtitleIndex.value]
     if (!sub) return
-    
     const startTime = parseSrtTimestamp(sub.timestamp)
     const parts = sub.timestamp.split('-->')
     const endTime = parts.length > 1 ? parseSrtTimestamp(parts[1].trim()) : startTime + 2
-    
     if (currentTime.value >= endTime) {
       videoPlayer.value.pause()
       selectedSubtitleIndex.value = -1
@@ -399,13 +360,8 @@ const checkSubtitleEnd = () => {
 const handleSidebarDoubleClick = (index) => {
   const arr = sidebarSubtitles.value
   if (!videoPlayer.value || !arr[index]) return
-  
-  const sub = arr[index]
-  const startTime = parseSrtTimestamp(sub.timestamp)
-  
-  videoPlayer.value.currentTime = startTime
+  videoPlayer.value.currentTime = parseSrtTimestamp(arr[index].timestamp)
   videoPlayer.value.pause()
-  
   selectedSubtitleIndex.value = index
   isPlayingSelectedSubtitle.value = false
 }
@@ -413,23 +369,14 @@ const handleSidebarDoubleClick = (index) => {
 const handleSubtitleSelect = (index) => {
   selectedSubtitleIndex.value = index
   isPlayingSelectedSubtitle.value = false
-  
   if (subtitlesScroll.value && sidebarSubtitles.value[index]) {
     nextTick(() => {
       const container = subtitlesScroll.value
       const blocks = container.querySelectorAll('.subtitle-block')
-      
       if (blocks[index]) {
         const block = blocks[index]
-        const containerHeight = container.clientHeight
-        const blockTop = block.offsetTop
-        const blockHeight = block.clientHeight
-        const targetScroll = blockTop - (containerHeight / 2) + (blockHeight / 2)
-        
-        container.scrollTo({
-          top: Math.max(0, targetScroll),
-          behavior: 'smooth'
-        })
+        const targetScroll = block.offsetTop - (container.clientHeight / 2) + (block.clientHeight / 2)
+        container.scrollTo({ top: Math.max(0, targetScroll), behavior: 'smooth' })
       }
     })
   }
@@ -439,25 +386,13 @@ provide('onSubtitleSelect', handleSubtitleSelect)
 
 const setupVideoSync = () => {
   if (videoPlayer.value) {
-    videoPlayer.value.onloadedmetadata = () => {
-      videoDuration.value = videoPlayer.value.duration
-    }
-
-    videoPlayer.value.ontimeupdate = () => {
-      currentTime.value = videoPlayer.value.currentTime
-      checkSubtitleEnd()
-    }
-    
+    videoPlayer.value.onloadedmetadata = () => { videoDuration.value = videoPlayer.value.duration }
+    videoPlayer.value.ontimeupdate = () => { currentTime.value = videoPlayer.value.currentTime; checkSubtitleEnd() }
     videoPlayer.value.onplay = () => {
       isPlaying.value = true
-      if (selectedSubtitleIndex.value >= 0 && !isPlayingSelectedSubtitle.value) {
-        isPlayingSelectedSubtitle.value = true
-      }
+      if (selectedSubtitleIndex.value >= 0 && !isPlayingSelectedSubtitle.value) isPlayingSelectedSubtitle.value = true
     }
-    
-    videoPlayer.value.onpause = () => {
-      isPlaying.value = false
-    }
+    videoPlayer.value.onpause = () => { isPlaying.value = false }
   }
 }
 
@@ -466,26 +401,16 @@ const deleteSubtitle = (index) => {
   const targetArray = activeSidebarTrack.value === 'tran' ? tranSubtitles : subtitles
   targetArray.value.splice(index, 1)
   localStorage.setItem(activeSidebarTrack.value === 'tran' ? 'tranSubtitles' : 'subtitles', JSON.stringify(targetArray.value))
-
-  if (selectedSubtitleIndex.value === index) {
-    selectedSubtitleIndex.value = -1
-  } else if (selectedSubtitleIndex.value > index) {
-    selectedSubtitleIndex.value--
-  }
+  if (selectedSubtitleIndex.value === index) selectedSubtitleIndex.value = -1
+  else if (selectedSubtitleIndex.value > index) selectedSubtitleIndex.value--
 }
 
 const openEditModal = (index) => {
   editingIndex.value = index
   const arr = sidebarSubtitles.value
-  editForm.value = {
-    timestamp: arr[index].timestamp,
-    testo: arr[index].testo
-  }
+  editForm.value = { timestamp: arr[index].timestamp, testo: arr[index].testo }
   showModal.value = true
-  
-  if (videoPlayer.value && !videoPlayer.value.paused) {
-    videoPlayer.value.pause()
-  }
+  if (videoPlayer.value && !videoPlayer.value.paused) videoPlayer.value.pause()
 }
 
 const closeModal = () => {
@@ -498,25 +423,14 @@ const saveEdit = () => {
   if (editingIndex.value >= 0) {
     saveUndoSnapshot()
     const targetArray = activeSidebarTrack.value === 'tran' ? tranSubtitles : subtitles
-    targetArray.value[editingIndex.value] = {
-      timestamp: editForm.value.timestamp,
-      testo: editForm.value.testo
-    }
-    
-    targetArray.value.sort((a, b) => {
-      const timeA = parseSrtTimestamp(a.timestamp)
-      const timeB = parseSrtTimestamp(b.timestamp)
-      return timeA - timeB
-    })
-    
+    targetArray.value[editingIndex.value] = { timestamp: editForm.value.timestamp, testo: editForm.value.testo }
+    targetArray.value.sort((a, b) => parseSrtTimestamp(a.timestamp) - parseSrtTimestamp(b.timestamp))
     localStorage.setItem(activeSidebarTrack.value === 'tran' ? 'tranSubtitles' : 'subtitles', JSON.stringify(targetArray.value))
     closeModal()
   }
 }
 
-const handleBack = () => {
-  showBackConfirm.value = true
-}
+const handleBack = () => { showBackConfirm.value = true }
 
 const clearProjectStorage = () => {
   localStorage.removeItem('subtitles')
@@ -541,171 +455,86 @@ const confirmBackNoSave = () => {
 }
 
 const handleKeydown = (e) => {
-  if ((e.ctrlKey || e.metaKey) && e.key === 'z') {
-    e.preventDefault()
-    undo()
-  }
+  if ((e.ctrlKey || e.metaKey) && e.key === 'z') { e.preventDefault(); undo() }
 }
 
-const arrayToSrt = (arr) => {
-  return arr.map((sub, i) => `${i + 1}\n${sub.timestamp}\n${sub.testo}`).join('\n\n')
-}
+const arrayToSrt = (arr) => arr.map((sub, i) => `${i + 1}\n${sub.timestamp}\n${sub.testo}`).join('\n\n')
 
-// ─── API fetch centralizzato con refresh token automatico ────────────────────
 const apiFetch = async (url, options = {}) => {
   const token = localStorage.getItem('subtitles_token')
-  if (!token) {
-    router.push('/login')
-    return null
-  }
-
+  if (!token) { router.push('/login'); return null }
   const res = await fetch(url, {
     ...options,
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${token}`,
-      ...(options.headers || {})
-    }
+    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}`, ...(options.headers || {}) }
   })
-
   const refreshedToken = res.headers.get('x-refresh-token')
-  console.log('x-refresh-token letto dal JS:', refreshedToken) // <-- controlla in console
-  if (refreshedToken) {
-    localStorage.setItem('subtitles_token', refreshedToken)
-  }
-
-  if (res.status === 401) {
-    localStorage.removeItem('subtitles_token')
-    router.push('/login')
-    return null
-  }
-
+  console.log('x-refresh-token letto dal JS:', refreshedToken)
+  if (refreshedToken) localStorage.setItem('subtitles_token', refreshedToken)
+  if (res.status === 401) { localStorage.removeItem('subtitles_token'); router.push('/login'); return null }
   return res
 }
 
 const handleSave = async () => {
-  if (!currentProject.value || !currentProject.value.id) {
-    console.warn('handleSave: nessun progetto o ID mancante');
-    return;
-  }
-
+  if (!currentProject.value || !currentProject.value.id) { console.warn('handleSave: nessun progetto o ID mancante'); return; }
   if (isSaving.value) return;
   isSaving.value = true;
-
   const srt1 = arrayToSrt(tranSubtitles.value);
   const srt2 = arrayToSrt(subtitles.value);
-
   try {
     let currentData = {};
-    try {
-      let d = currentProject.value.data;
-      while (typeof d === 'string') { d = JSON.parse(d); }
-      currentData = d;
-    } catch (e) { currentData = {}; }
-
+    try { let d = currentProject.value.data; while (typeof d === 'string') { d = JSON.parse(d); } currentData = d; } catch (e) { currentData = {}; }
     const res = await apiFetch(
       `https://api.matita.net/subtitles-admin/projects/${currentProject.value.id}`,
-      {
-        method: 'PATCH',
-        body: JSON.stringify({
-          name: currentProject.value.name,
-          data: JSON.stringify({
-            ...currentData,
-            srt1,
-            srt2,
-            playhead: currentTime.value,
-            last_saved: new Date().toISOString()
-          })
-        })
-      }
+      { method: 'PATCH', body: JSON.stringify({ name: currentProject.value.name, data: JSON.stringify({ ...currentData, srt1, srt2, playhead: currentTime.value, last_saved: new Date().toISOString() }) }) }
     );
-
-    if (!res) return; // 401 già gestito da apiFetch
-
-    if (!res.ok) {
-      throw new Error(`HTTP ${res.status}`);
-    }
-  } catch (err) {
-    console.error('Save error:', err);
-  } finally {
-    isSaving.value = false;
-  }
+    if (!res) return;
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  } catch (err) { console.error('Save error:', err); } finally { isSaving.value = false; }
 }
 
-// --- TRIM SOTTOTITOLI OLTRE LA DURATA DEL VIDEO ---
 const trimSubtitlesToDuration = () => {
   if (!videoDuration.value || videoDuration.value === 0) return
-
-  const filter = (arr) => arr.filter(sub => {
-    const start = parseSrtTimestamp(sub.timestamp)
-    return start < videoDuration.value
-  })
-
+  const filter = (arr) => arr.filter(sub => parseSrtTimestamp(sub.timestamp) < videoDuration.value)
   const filteredSubs = filter(subtitles.value)
   const filteredTran = filter(tranSubtitles.value)
-
-  if (filteredSubs.length !== subtitles.value.length) {
-    subtitles.value = filteredSubs
-    localStorage.setItem('subtitles', JSON.stringify(subtitles.value))
-  }
-  if (filteredTran.length !== tranSubtitles.value.length) {
-    tranSubtitles.value = filteredTran
-    localStorage.setItem('tranSubtitles', JSON.stringify(tranSubtitles.value))
-  }
+  if (filteredSubs.length !== subtitles.value.length) { subtitles.value = filteredSubs; localStorage.setItem('subtitles', JSON.stringify(subtitles.value)) }
+  if (filteredTran.length !== tranSubtitles.value.length) { tranSubtitles.value = filteredTran; localStorage.setItem('tranSubtitles', JSON.stringify(tranSubtitles.value)) }
 }
 
-watch(videoDuration, (val) => {
-  if (val > 0) trimSubtitlesToDuration()
-})
+watch(videoDuration, (val) => { if (val > 0) trimSubtitlesToDuration() })
 
 let autosaveInterval = null
 
-watch(currentTime, () => {
-  scrollSidebarToActive()
-})
+watch(currentTime, () => { scrollSidebarToActive() })
+watch(activeSidebarTrack, () => { selectedSubtitleIndex.value = -1 })
 
-watch(activeSidebarTrack, () => {
-  selectedSubtitleIndex.value = -1
-})
-
-// --- FIX 3: CARICAMENTO VIDEO CON CONTROLLO RIGIDO ---
 const handleVideoDropModal = (event) => {
   const files = event.dataTransfer.files
-  if (files.length > 0) {
-    loadVideoFile(files[0])
-  }
+  if (files.length > 0) loadVideoFile(files[0])
 }
 
 const handleVideoSelectModal = (event) => {
   const file = event.target.files[0]
-  if (file) {
-    loadVideoFile(file)
-  }
+  if (file) loadVideoFile(file)
 }
 
 const loadVideoFile = (file) => {
   videoDropError.value = '';
-  
   if (expectedVideoName.value && file.name !== expectedVideoName.value) {
     videoDropError.value = `Errore: il file selezionato (${file.name}) non corrisponde al video originale del progetto: "${expectedVideoName.value}".`;
     return;
   }
-
   console.log('expectedVideoName:', expectedVideoName.value);
   console.log('file.name:', file.name);
   console.log('currentProject:', JSON.stringify(currentProject.value));
-
   videoFile.value = file
   videoUrl.value = URL.createObjectURL(file)
   showVideoDropModal.value = false
   nextTick(() => {
     setupVideoSync()
-
     const savedPlayhead = currentProject.value?.data?.playhead
     if (savedPlayhead && savedPlayhead > 0 && videoPlayer.value) {
-      videoPlayer.value.addEventListener('loadedmetadata', () => {
-        videoPlayer.value.currentTime = savedPlayhead
-      }, { once: true })
+      videoPlayer.value.addEventListener('loadedmetadata', () => { videoPlayer.value.currentTime = savedPlayhead }, { once: true })
     }
   })
 }
@@ -722,25 +551,16 @@ onMounted(() => {
   if (projectFromState) {
     let cleanData = projectFromState.data;
     try {
-      while (typeof cleanData === 'string' && cleanData.trim().startsWith('{')) {
-        cleanData = JSON.parse(cleanData);
-      }
-    } catch (e) {
-      console.error("Errore parsing dati in onMounted", e);
-    }
-
+      while (typeof cleanData === 'string' && cleanData.trim().startsWith('{')) cleanData = JSON.parse(cleanData);
+    } catch (e) { console.error("Errore parsing dati in onMounted", e); }
     currentProject.value = { ...projectFromState, data: cleanData };
-    
     localStorage.setItem('currentProjectBackup', JSON.stringify(currentProject.value))
     localStorage.setItem('currentProjectId', projectFromState.id)
     localStorage.setItem('currentProjectName', projectFromState.name)
-    
     console.log("Progetto caricato correttamente:", currentProject.value);
   } else if (backupId) {
     const fullBackup = localStorage.getItem('currentProjectBackup')
-    if (fullBackup) {
-       currentProject.value = JSON.parse(fullBackup)
-    }
+    if (fullBackup) currentProject.value = JSON.parse(fullBackup)
   }
 
   const file = history.state?.videoFile || null
@@ -762,34 +582,12 @@ onUnmounted(() => {
   window.removeEventListener('keydown', handleKeydown)
 })
 
-const restartVideo = () => {
-  if (videoPlayer.value) {
-    videoPlayer.value.currentTime = 0
-    videoPlayer.value.play()
-  }
-}
+const restartVideo = () => { if (videoPlayer.value) { videoPlayer.value.currentTime = 0; videoPlayer.value.play() } }
+const togglePlay = () => { if (videoPlayer.value) { videoPlayer.value.paused ? videoPlayer.value.play() : videoPlayer.value.pause() } }
+const zoomOut = () => { zoomLevel.value = Math.max(0.5, zoomLevel.value - 0.25); pixelsPerSecond.value = 80 * zoomLevel.value; waveformKey.value++ }
+const zoomIn = () => { zoomLevel.value = Math.min(5, zoomLevel.value + 0.25); pixelsPerSecond.value = 80 * zoomLevel.value; waveformKey.value++ }
 
-const togglePlay = () => {
-  if (videoPlayer.value) {
-    videoPlayer.value.paused ? videoPlayer.value.play() : videoPlayer.value.pause()
-  }
-}
-
-const zoomOut = () => {
-  zoomLevel.value = Math.max(0.5, zoomLevel.value - 0.25)
-  pixelsPerSecond.value = 80 * zoomLevel.value
-  waveformKey.value++
-}
-
-const zoomIn = () => {
-  zoomLevel.value = Math.min(5, zoomLevel.value + 0.25)
-  pixelsPerSecond.value = 80 * zoomLevel.value
-  waveformKey.value++
-}
-
-watch(videoPlayer, (newPlayer) => {
-  if (newPlayer) setupVideoSync()
-})
+watch(videoPlayer, (newPlayer) => { if (newPlayer) setupVideoSync() })
 </script>
 
 <template>
@@ -816,6 +614,7 @@ watch(videoPlayer, (newPlayer) => {
           {{ projectName }}
         </h6>
       </div>
+
       <nav class="nav">
         <button class="btn-save" @click="handleSave" :disabled="isSaving">
           <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" fill="currentColor" viewBox="0 0 16 16">
@@ -830,15 +629,14 @@ watch(videoPlayer, (newPlayer) => {
           </svg>
           Home
         </button>
-        
-        <button class="btn-export" @click="handleExport">
-        <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" fill="currentColor" viewBox="0 0 16 16">
-          <path d="M.5 9.9a.5.5 0 0 1 .5.5v2.5a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-2.5a.5.5 0 0 1 1 0v2.5a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2v-2.5a.5.5 0 0 1 .5-.5z"/>
-          <path d="M7.646 11.854a.5.5 0 0 0 .708 0l3-3a.5.5 0 0 0-.708-.708L8.5 10.293V1.5a.5.5 0 0 0-1 0v8.793L5.354 8.146a.5.5 0 1 0-.708.708l3 3z"/>
-        </svg>
-        Export SRT
-      </button>
 
+        <button class="btn-export" @click="handleExport">
+          <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" fill="currentColor" viewBox="0 0 16 16">
+            <path d="M.5 9.9a.5.5 0 0 1 .5.5v2.5a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-2.5a.5.5 0 0 1 1 0v2.5a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2v-2.5a.5.5 0 0 1 .5-.5z"/>
+            <path d="M7.646 11.854a.5.5 0 0 0 .708 0l3-3a.5.5 0 0 0-.708-.708L8.5 10.293V1.5a.5.5 0 0 0-1 0v8.793L5.354 8.146a.5.5 0 1 0-.708.708l3 3z"/>
+          </svg>
+          Export SRT
+        </button>
       </nav>
     </header>
 
@@ -859,52 +657,52 @@ watch(videoPlayer, (newPlayer) => {
 
           <div class="subtitles-scroll" ref="subtitlesScroll">
 
-  <!-- ADD BEFORE FIRST -->
-  <div class="subtitle-separator subtitle-separator--edge">
-    <div class="separator-line"></div>
-    <div class="separator-actions">
-      <button class="btn-sep btn-add" @click.stop="addSubtitleAtStart">+ add</button>
-    </div>
-    <div class="separator-line"></div>
-  </div>
+            <!-- ADD / DUPLICATE BEFORE FIRST -->
+            <div class="subtitle-separator subtitle-separator--edge">
+              <div class="separator-line"></div>
+              <div class="separator-actions">
+                <button class="btn-sep btn-add" @click.stop="addSubtitleAtStart">+ add</button>
+                <button class="btn-sep btn-duplicate" @click.stop="duplicateSubtitleAtStart">⧉ duplicate</button>
+              </div>
+              <div class="separator-line"></div>
+            </div>
 
-  <template v-for="(subtitle, index) in sidebarSubtitles" :key="index">
-    <div 
-      class="subtitle-block"
-      :class="{ 'subtitle-block-active': isSubtitleActive(index) }"
-      @dblclick="handleSidebarDoubleClick(index)"
-    >
-      <span class="timestamp">{{ subtitle.timestamp }}</span>
-      <p class="testo">{{ subtitle.testo }}</p>
-      <div class="block-actions">
-        <button class="btn-delete" @click.stop="deleteSubtitle(index)" title="Elimina sottotitolo">Delete</button>
-        <button class="btn-edit" @click.stop="openEditModal(index)">Edit</button>
-      </div>
-    </div>
+            <template v-for="(subtitle, index) in sidebarSubtitles" :key="index">
+              <div
+                class="subtitle-block"
+                :class="{ 'subtitle-block-active': isSubtitleActive(index) }"
+                @dblclick="handleSidebarDoubleClick(index)"
+              >
+                <span class="timestamp">{{ subtitle.timestamp }}</span>
+                <p class="testo">{{ subtitle.testo }}</p>
+                <div class="block-actions">
+                  <button class="btn-delete" @click.stop="deleteSubtitle(index)" title="Elimina sottotitolo">Delete</button>
+                  <button class="btn-edit" @click.stop="openEditModal(index)">Edit</button>
+                </div>
+              </div>
 
-    <div
-      v-if="index < sidebarSubtitles.length - 1"
-      class="subtitle-separator"
-    >
-      <div class="separator-line"></div>
-      <div class="separator-actions">
-        <button class="btn-sep btn-add" @click.stop="addSubtitleBetween(index)">+ add</button>
-        <button class="btn-sep btn-merge" @click.stop="mergeSubtitles(index)">⊕ merge</button>
-      </div>
-      <div class="separator-line"></div>
-    </div>
-      </template>
+              <div v-if="index < sidebarSubtitles.length - 1" class="subtitle-separator">
+                <div class="separator-line"></div>
+                <div class="separator-actions">
+                  <button class="btn-sep btn-add" @click.stop="addSubtitleBetween(index)">+ add</button>
+                  <button class="btn-sep btn-duplicate" @click.stop="duplicateSubtitleBetween(index)">⧉ duplicate</button>
+                  <button class="btn-sep btn-merge" @click.stop="mergeSubtitles(index)">⊕ merge</button>
+                </div>
+                <div class="separator-line"></div>
+              </div>
+            </template>
 
-      <!-- ADD AFTER LAST -->
-      <div class="subtitle-separator subtitle-separator--edge">
-        <div class="separator-line"></div>
-        <div class="separator-actions">
-          <button class="btn-sep btn-add" @click.stop="addSubtitleAtEnd">+ add</button>
-        </div>
-        <div class="separator-line"></div>
-      </div>
+            <!-- ADD / DUPLICATE AFTER LAST -->
+            <div class="subtitle-separator subtitle-separator--edge">
+              <div class="separator-line"></div>
+              <div class="separator-actions">
+                <button class="btn-sep btn-add" @click.stop="addSubtitleAtEnd">+ add</button>
+                <button class="btn-sep btn-duplicate" @click.stop="duplicateSubtitleAtEnd">⧉ duplicate</button>
+              </div>
+              <div class="separator-line"></div>
+            </div>
 
-    </div>
+          </div>
         </div>
 
         <div class="video-area">
@@ -938,7 +736,7 @@ watch(videoPlayer, (newPlayer) => {
             </svg>
           </div>
           <div class="track">
-            <subTimeline 
+            <subTimeline
               v-if="videoDuration > 0"
               :duration="videoDuration"
               :videoRef="videoPlayer"
@@ -961,23 +759,11 @@ watch(videoPlayer, (newPlayer) => {
         <div class="modal-body">
           <div class="form-group">
             <label for="timestamp">Timestamp</label>
-            <input 
-              id="timestamp"
-              v-model="editForm.timestamp" 
-              type="text" 
-              class="form-control"
-              placeholder="00:00:01,000 --> 00:00:03,000"
-            />
+            <input id="timestamp" v-model="editForm.timestamp" type="text" class="form-control" placeholder="00:00:01,000 --> 00:00:03,000" />
           </div>
           <div class="form-group">
             <label for="testo">Text</label>
-            <textarea 
-              id="testo"
-              v-model="editForm.testo" 
-              class="form-control"
-              rows="4"
-              placeholder="Inserisci il testo del sottotitolo"
-            ></textarea>
+            <textarea id="testo" v-model="editForm.testo" class="form-control" rows="4" placeholder="Inserisci il testo del sottotitolo"></textarea>
           </div>
         </div>
         <div class="modal-footer">
@@ -987,233 +773,141 @@ watch(videoPlayer, (newPlayer) => {
       </div>
     </div>
   </div>
-    <!-- MODAL BLOCCANTE DROP VIDEO — non chiudibile -->
-    <div v-if="showVideoDropModal" class="video-drop-overlay">
-  <div class="video-drop-box">
-    <button class="video-drop-close" @click="() => { clearProjectStorage(); router.push('/myprojects') }" title="Back to projects">&times;</button>
-    <div class="video-drop-icon">
-      <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" fill="currentColor" viewBox="0 0 16 16">
-        <path d="M6.79 5.093A.5.5 0 0 0 6 5.5v5a.5.5 0 0 0 .79.407l3.5-2.5a.5.5 0 0 0 0-.814l-3.5-2.5z"/>
-        <path d="M0 4a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2V4zm15 0a1 1 0 0 0-1-1H2a1 1 0 0 0-1 1v8a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V4z"/>
-      </svg>
-    </div>
-    
-    <h2>Load your video</h2>
-    <p>The video file is not stored on our servers.<br>Drop the original file to start editing.</p>
 
-    <div v-if="expectedVideoName" class="expected-file-box">
-      <small>Expected file:</small>
-      <div class="file-name-badge">
-        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" fill="currentColor" viewBox="0 0 16 16" style="margin-right: 6px;">
-          <path d="M9.293 0H4a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2V4.707A1 1 0 0 0 13.707 4L10 .293A1 1 0 0 0 9.293 0zM9.5 3.5v-2l3 3h-2a1 1 0 0 1-1-1zM11 8H5a.5.5 0 0 1 0-1h6a.5.5 0 0 1 0 1zm0 2H5a.5.5 0 0 1 0-1h6a.5.5 0 0 1 0 1zm-6 2h3a.5.5 0 0 1 0 1H5a.5.5 0 0 1 0-1z"/>
+  <!-- MODAL BLOCCANTE DROP VIDEO -->
+  <div v-if="showVideoDropModal" class="video-drop-overlay">
+    <div class="video-drop-box">
+      <button class="video-drop-close" @click="() => { clearProjectStorage(); router.push('/myprojects') }" title="Back to projects">&times;</button>
+      <div class="video-drop-icon">
+        <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" fill="currentColor" viewBox="0 0 16 16">
+          <path d="M6.79 5.093A.5.5 0 0 0 6 5.5v5a.5.5 0 0 0 .79.407l3.5-2.5a.5.5 0 0 0 0-.814l-3.5-2.5z"/>
+          <path d="M0 4a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2V4zm15 0a1 1 0 0 0-1-1H2a1 1 0 0 0-1 1v8a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V4z"/>
         </svg>
-        {{ expectedVideoName }}
       </div>
+      <h2>Load your video</h2>
+      <p>The video file is not stored on our servers.<br>Drop the original file to start editing.</p>
+      <div v-if="expectedVideoName" class="expected-file-box">
+        <small>Expected file:</small>
+        <div class="file-name-badge">
+          <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" fill="currentColor" viewBox="0 0 16 16" style="margin-right: 6px;">
+            <path d="M9.293 0H4a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2V4.707A1 1 0 0 0 13.707 4L10 .293A1 1 0 0 0 9.293 0zM9.5 3.5v-2l3 3h-2a1 1 0 0 1-1-1zM11 8H5a.5.5 0 0 1 0-1h6a.5.5 0 0 1 0 1zm0 2H5a.5.5 0 0 1 0-1h6a.5.5 0 0 1 0 1zm-6 2h3a.5.5 0 0 1 0 1H5a.5.5 0 0 1 0-1z"/>
+          </svg>
+          {{ expectedVideoName }}
+        </div>
+      </div>
+      <div
+        class="video-drop-zone"
+        :class="{ 'has-error': videoDropError }"
+        @dragover.prevent
+        @drop.prevent="handleVideoDropModal"
+        @click="$refs.videoDropInput.click()"
+      >
+        <input ref="videoDropInput" type="file" accept="video/*" style="display:none" @change="handleVideoSelectModal" />
+        <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" fill="currentColor" viewBox="0 0 16 16">
+          <path d="M.5 9.9a.5.5 0 0 1 .5.5v2.5a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-2.5a.5.5 0 0 1 1 0v2.5a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2v-2.5a.5.5 0 0 1 .5-.5z"/>
+          <path d="M7.646 1.146a.5.5 0 0 1 .708 0l3 3a.5.5 0 0 1-.708.708L8.5 2.707V11.5a.5.5 0 0 1-1 0V2.707L5.354 4.854a.5.5 0 1 1-.708-.708l3-3z"/>
+        </svg>
+        <span>Drop video here or click to browse</span>
+      </div>
+      <p v-if="videoDropError" class="video-drop-error">
+        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 16 16" style="margin-right: 5px; vertical-align: text-bottom;">
+          <path d="M8 15A7 7 0 1 1 8 1a7 7 0 0 1 0 14zm0 1A8 8 0 1 0 8 0a8 8 0 0 0 0 16z"/>
+          <path d="M7.002 11a1 1 0 1 1 2 0 1 1 0 0 1-2 0zM7.1 4.995a.905.905 0 1 1 1.8 0l-.35 3.507a.552.552 0 0 1-1.1 0L7.1 4.995z"/>
+        </svg>
+        {{ videoDropError }}
+      </p>
     </div>
-
-    <div
-      class="video-drop-zone"
-      :class="{ 'has-error': videoDropError }"
-      @dragover.prevent
-      @drop.prevent="handleVideoDropModal"
-      @click="$refs.videoDropInput.click()"
-    >
-      <input ref="videoDropInput" type="file" accept="video/*" style="display:none" @change="handleVideoSelectModal" />
-      <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" fill="currentColor" viewBox="0 0 16 16">
-        <path d="M.5 9.9a.5.5 0 0 1 .5.5v2.5a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-2.5a.5.5 0 0 1 1 0v2.5a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2v-2.5a.5.5 0 0 1 .5-.5z"/>
-        <path d="M7.646 1.146a.5.5 0 0 1 .708 0l3 3a.5.5 0 0 1-.708.708L8.5 2.707V11.5a.5.5 0 0 1-1 0V2.707L5.354 4.854a.5.5 0 1 1-.708-.708l3-3z"/>
-      </svg>
-      <span>Drop video here or click to browse</span>
-    </div>
-
-    <p v-if="videoDropError" class="video-drop-error">
-      <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 16 16" style="margin-right: 5px; vertical-align: text-bottom;">
-        <path d="M8 15A7 7 0 1 1 8 1a7 7 0 0 1 0 14zm0 1A8 8 0 1 0 8 0a8 8 0 0 0 0 16z"/>
-        <path d="M7.002 11a1 1 0 1 1 2 0 1 1 0 0 1-2 0zM7.1 4.995a.905.905 0 1 1 1.8 0l-.35 3.507a.552.552 0 0 1-1.1 0L7.1 4.995z"/>
-      </svg>
-      {{ videoDropError }}
-    </p>
   </div>
-</div>
-    <!-- Modal conferma back -->
-    <div v-if="showBackConfirm" class="modal-overlay">
-      <div class="modal-content" style="max-width:380px; text-align:center;">
-        <div class="modal-body" style="padding:2rem;">
-          <h4 style="margin:0 0 12px 0; color:#f1f5f9;">Save before leaving?</h4>
-          <p style="color:#64748b; font-size:0.9rem; margin:0 0 24px 0;">
-            Do you want to save your changes before going back?
-          </p>
-          <div style="display:flex; gap:12px; justify-content:center;">
-            <button class="btn btn-secondary" @click="confirmBackNoSave">Leave without saving</button>
-            <button class="btn btn-primary" @click="confirmBackSave" :disabled="isSaving">
-              {{ isSaving ? 'Saving...' : 'Save & Leave' }}
-            </button>
-          </div>
+
+  <!-- Modal conferma back -->
+  <div v-if="showBackConfirm" class="modal-overlay">
+    <div class="modal-content" style="max-width:380px; text-align:center;">
+      <div class="modal-body" style="padding:2rem;">
+        <h4 style="margin:0 0 12px 0; color:#f1f5f9;">Save before leaving?</h4>
+        <p style="color:#64748b; font-size:0.9rem; margin:0 0 24px 0;">Do you want to save your changes before going back?</p>
+        <div style="display:flex; gap:12px; justify-content:center;">
+          <button class="btn btn-secondary" @click="confirmBackNoSave">Leave without saving</button>
+          <button class="btn btn-primary" @click="confirmBackSave" :disabled="isSaving">
+            {{ isSaving ? 'Saving...' : 'Save & Leave' }}
+          </button>
         </div>
       </div>
     </div>
+  </div>
 </template>
 
 <style scoped>
 .wrapper { 
-  min-height: 100vh;
-  width: 100%; 
-  background-color: #212529; 
-  color: #fff; 
-  text-shadow: 0 0.05rem 0.1rem rgba(0, 0, 0, 0.5); 
-  display: grid; 
-  grid-template-rows: 55px 1fr; 
-  grid-template-areas: "header" "container"; 
-  overflow: hidden; 
+  min-height: 100vh; width: 100%; background-color: #212529; color: #fff;
+  text-shadow: 0 0.05rem 0.1rem rgba(0, 0, 0, 0.5); display: grid;
+  grid-template-rows: 55px 1fr; grid-template-areas: "header" "container"; overflow: hidden;
 }
 .header { grid-area: header; background-color: #212529; height: 50px; }
 h3 { color: rgba(31, 125, 240, 0.918); }
 .nav { display: flex; gap: 1rem; }
 
 .btn-save {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 6px 18px;
-  background: rgba(31, 125, 240, 0.85);
-  color: #fff;
-  border: none;
-  border-radius: 5px;
-  font-weight: 700;
-  font-size: 0.9rem;
-  cursor: pointer;
-  transition: all 0.2s ease;
-  letter-spacing: 0.03em;
+  display: flex; align-items: center; gap: 6px; padding: 6px 18px;
+  background: rgba(31, 125, 240, 0.85); color: #fff; border: none; border-radius: 5px;
+  font-weight: 700; font-size: 0.9rem; cursor: pointer; transition: all 0.2s ease; letter-spacing: 0.03em;
 }
 .btn-save:hover { background: rgba(31, 125, 240, 1); transform: translateY(-1px); box-shadow: 0 4px 10px rgba(31, 125, 240, 0.4); }
 .btn-save:active { transform: translateY(0); }
 
-.container { 
-  grid-area: container; 
-  display: grid; 
-  grid-template-rows: 65% 35%; 
-  min-width: 100%; 
-  height: calc(100vh); 
-  overflow: hidden; 
-  gap: 0; 
+.container {
+  grid-area: container; display: grid; grid-template-rows: 65% 35%;
+  min-width: 100%; height: calc(100vh); overflow: hidden; gap: 0;
 }
-.content { 
-  display: grid; 
-  grid-template-columns: 40% 60%; 
-  width: 100%; 
-  overflow: hidden; 
-  height: 100%; 
-  align-items: stretch; 
-  max-height: 100%;
+.content {
+  display: grid; grid-template-columns: 40% 60%; width: 100%;
+  overflow: hidden; height: 100%; align-items: stretch; max-height: 100%;
 }
 .sidebar { background-color: rgb(40, 40, 40); display: flex; flex-direction: column; overflow: hidden; height: 100%; }
 
 .sidebar-track-badge {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 6px 12px;
-  font-size: 0.72rem;
-  font-weight: 700;
-  letter-spacing: 0.05em;
-  text-transform: uppercase;
-  flex-shrink: 0;
-  border-bottom: 1px solid rgba(255,255,255,0.06);
+  display: flex; align-items: center; gap: 6px; padding: 6px 12px;
+  font-size: 0.72rem; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase;
+  flex-shrink: 0; border-bottom: 1px solid rgba(255,255,255,0.06);
 }
 
 .expected-file-box {
-  margin-bottom: 20px;
-  background: rgba(74, 144, 226, 0.1);
-  padding: 10px;
-  border-radius: 8px;
-  border: 1px dashed #4a90e2;
+  margin-bottom: 20px; background: rgba(74, 144, 226, 0.1);
+  padding: 10px; border-radius: 8px; border: 1px dashed #4a90e2;
 }
-
-.expected-file-box small {
-  display: block;
-  color: #b0b0b0;
-  margin-bottom: 4px;
-}
+.expected-file-box small { display: block; color: #b0b0b0; margin-bottom: 4px; }
 
 .video-drop-close {
-  position: absolute;
-  top: 16px;
-  right: 16px;
-  background: transparent;
-  border: 1px solid #2d3748;
-  color: #64748b;
-  border-radius: 6px;
-  width: 32px;
-  height: 32px;
-  font-size: 1.2rem;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  line-height: 1;
-  transition: all 0.2s ease;
+  position: absolute; top: 16px; right: 16px; background: transparent;
+  border: 1px solid #2d3748; color: #64748b; border-radius: 6px; width: 32px; height: 32px;
+  font-size: 1.2rem; cursor: pointer; display: flex; align-items: center; justify-content: center;
+  line-height: 1; transition: all 0.2s ease;
 }
+.video-drop-close:hover { border-color: #4a5568; color: #e2e8f0; background: rgba(255, 255, 255, 0.05); }
 
-.video-drop-close:hover {
-  border-color: #4a5568;
-  color: #e2e8f0;
-  background: rgba(255, 255, 255, 0.05);
-}
-
-.file-name-badge {
-  color: #4a90e2;
-  font-weight: 600;
-  font-family: monospace;
-  word-break: break-all;
-}
+.file-name-badge { color: #4a90e2; font-weight: 600; font-family: monospace; word-break: break-all; }
 
 .video-drop-error {
-  color: #ff4d4d;
-  background: rgba(255, 77, 77, 0.1);
-  padding: 10px;
-  border-radius: 6px;
-  margin-top: 15px;
-  font-size: 0.9rem;
-  border-left: 4px solid #ff4d4d;
+  color: #ff4d4d; background: rgba(255, 77, 77, 0.1); padding: 10px;
+  border-radius: 6px; margin-top: 15px; font-size: 0.9rem; border-left: 4px solid #ff4d4d;
 }
-
-.video-drop-zone.has-error {
-  border-color: #ff4d4d !important;
-  background: rgba(255, 77, 77, 0.05) !important;
-  color: #ff4d4d;
-}
+.video-drop-zone.has-error { border-color: #ff4d4d !important; background: rgba(255, 77, 77, 0.05) !important; color: #ff4d4d; }
 
 .btn-export {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 6px 18px;
-  background: rgba(0, 170, 140, 0.2);
-  color: #00cc99;
-  border: 1px solid rgba(0, 170, 140, 0.4);
-  border-radius: 5px;
-  font-weight: 700;
-  font-size: 0.9rem;
-  cursor: pointer;
-  transition: all 0.2s ease;
-  letter-spacing: 0.03em;
+  display: flex; align-items: center; gap: 6px; padding: 6px 18px;
+  background: rgba(0, 170, 140, 0.2); color: #00cc99; border: 1px solid rgba(0, 170, 140, 0.4);
+  border-radius: 5px; font-weight: 700; font-size: 0.9rem; cursor: pointer;
+  transition: all 0.2s ease; letter-spacing: 0.03em;
 }
-.btn-export:hover {
-  background: rgba(0, 170, 140, 0.4);
-  color: #fff;
-  border-color: #00cc99;
-  transform: translateY(-1px);
-  box-shadow: 0 4px 10px rgba(0, 170, 140, 0.3);
-}
+.btn-export:hover { background: rgba(0, 170, 140, 0.4); color: #fff; border-color: #00cc99; transform: translateY(-1px); box-shadow: 0 4px 10px rgba(0, 170, 140, 0.3); }
 
 .badge-tran { color: rgba(31, 125, 240, 0.918); background: rgba(31, 125, 240, 0.12); }
 .badge-orig { color: #00cc99; background: rgba(0, 170, 140, 0.12); }
 
 .subtitles-scroll { flex: 1; overflow-y: auto; overflow-x: hidden; padding-right: 0.5rem; min-height: 0; scroll-behavior: smooth; }
 
-.subtitle-block { 
+.subtitle-block {
   display: flex; flex-direction: column; padding: 0.3px; margin-bottom: 0;
-  background: #2a2d31; border-left: 4px solid rgba(31, 125, 240, 0.918); 
+  background: #2a2d31; border-left: 4px solid rgba(31, 125, 240, 0.918);
   border-radius: 4px; transition: all 0.3s ease; cursor: pointer;
 }
 .badge-orig ~ .subtitles-scroll .subtitle-block { border-left-color: #00aa8c; }
@@ -1240,6 +934,8 @@ h3 { color: rgba(31, 125, 240, 0.918); }
 .btn-sep { padding: 1px 8px; font-size: 0.68rem; font-weight: 600; border: none; border-radius: 3px; cursor: pointer; line-height: 1.6; letter-spacing: 0.02em; transition: all 0.15s ease; white-space: nowrap; }
 .btn-add { background: rgba(31, 125, 240, 0.5); color: #c8dcff; border: 1px solid rgba(31, 125, 240, 0.918); }
 .btn-add:hover { background: rgba(31, 125, 240, 0.9); color: #fff; box-shadow: 0 2px 6px rgba(31, 125, 240, 0.4); }
+.btn-duplicate { background: rgba(139, 92, 246, 0.3); color: #c4b5fd; border: 1px solid rgba(139, 92, 246, 0.6); }
+.btn-duplicate:hover { background: rgba(139, 92, 246, 0.8); color: #fff; box-shadow: 0 2px 6px rgba(139, 92, 246, 0.4); }
 .btn-merge { background: rgba(0, 204, 153, 0.2); color: #00cc99; border: 1px solid rgba(0, 204, 153, 0.55); }
 .btn-merge:hover { background: rgba(0, 204, 153, 0.8); color: #fff; box-shadow: 0 2px 6px rgba(0, 204, 153, 0.4); }
 
@@ -1272,95 +968,31 @@ textarea.form-control { resize: vertical; min-height: 100px; }
 .btn-primary { background: rgba(31, 125, 240, 0.918); color: #fff; }
 .btn-primary:hover { background: rgba(31, 125, 240, 1); transform: translateY(-1px); box-shadow: 0 4px 8px rgba(31, 125, 240, 0.3); }
 
-/* ── Modal bloccante drop video ─────────────────────────────────────────────── */
 .video-drop-overlay {
-  position: fixed;
-  inset: 0;
-  background: rgba(0, 0, 0, 0.92);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 9999;
-  backdrop-filter: blur(6px);
+  position: fixed; inset: 0; background: rgba(0, 0, 0, 0.92);
+  display: flex; align-items: center; justify-content: center; z-index: 9999; backdrop-filter: blur(6px);
 }
-
 .video-drop-box {
-  background: #1e2128;
-  border: 1px solid #2d3748;
-  border-radius: 16px;
-  padding: 48px 40px;
-  max-width: 480px;
-  width: 90%;
-  text-align: center;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 16px;
-  position: relative;
+  background: #1e2128; border: 1px solid #2d3748; border-radius: 16px;
+  padding: 48px 40px; max-width: 480px; width: 90%; text-align: center;
+  display: flex; flex-direction: column; align-items: center; gap: 16px; position: relative;
 }
-
 .video-drop-icon { color: rgba(31, 125, 240, 0.918); }
-
-.video-drop-box h2 {
-  margin: 0;
-  font-size: 1.5rem;
-  color: #f1f5f9;
-  font-weight: 700;
-}
-
-.video-drop-box p {
-  margin: 0;
-  font-size: 0.9rem;
-  color: #64748b;
-  line-height: 1.6;
-}
-
+.video-drop-box h2 { margin: 0; font-size: 1.5rem; color: #f1f5f9; font-weight: 700; }
+.video-drop-box p { margin: 0; font-size: 0.9rem; color: #64748b; line-height: 1.6; }
 .video-drop-zone {
-  width: 100%;
-  border: 2px dashed #2d3748;
-  border-radius: 12px;
-  padding: 36px 20px;
-  cursor: pointer;
-  transition: all 0.2s;
-  background: #0f1117;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 12px;
-  color: #475569;
-  margin-top: 8px;
+  width: 100%; border: 2px dashed #2d3748; border-radius: 12px; padding: 36px 20px;
+  cursor: pointer; transition: all 0.2s; background: #0f1117;
+  display: flex; flex-direction: column; align-items: center; gap: 12px; color: #475569; margin-top: 8px;
 }
+.video-drop-zone:hover { border-color: rgba(31, 125, 240, 0.918); background: rgba(31, 125, 240, 0.06); color: #93c5fd; }
+.video-drop-zone span { font-size: 0.9rem; font-weight: 500; }
+.video-drop-error { color: #f87171; font-size: 0.85rem; margin: 0; }
 
-.video-drop-zone:hover {
-  border-color: rgba(31, 125, 240, 0.918);
-  background: rgba(31, 125, 240, 0.06);
-  color: #93c5fd;
-}
-
-.video-drop-zone span {
-  font-size: 0.9rem;
-  font-weight: 500;
-}
-
-.video-drop-error {
-  color: #f87171;
-  font-size: 0.85rem;
-  margin: 0;
-}
 .btn-back {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 6px 18px;
-  background: transparent;
-  color: #94a3b8;
-  border: 1px solid #2d3748;
-  border-radius: 5px;
-  font-weight: 700;
-  font-size: 0.9rem;
-  cursor: pointer;
-  transition: all 0.2s ease;
-  letter-spacing: 0.03em;
+  display: flex; align-items: center; gap: 6px; padding: 6px 18px;
+  background: transparent; color: #94a3b8; border: 1px solid #2d3748; border-radius: 5px;
+  font-weight: 700; font-size: 0.9rem; cursor: pointer; transition: all 0.2s ease; letter-spacing: 0.03em;
 }
 .btn-back:hover { border-color: #4a5568; color: #e2e8f0; }
 </style>
