@@ -19,23 +19,81 @@
         <p v-if="!videoFile">Drop your video source here or <span class="browse-link">browse</span></p>
         <p v-else>Selected file: {{ videoFile.name }}</p>
       </div>
-      <p>Source language</p>
-      <select class="form-select mb-3" v-model="sourceLanguage">
-        <option value="auto" v-if="!isAzureMode" selected="selected">[Auto-detect]</option>
-        <option value="" v-else>[Select source language]</option>
-        <option value="de">German</option>
-        <option value="en">English</option>
-        <option value="es">Spanish</option>
-        <option value="it">Italian</option>
-      </select>
-      <p>Target language</p>
-      <select class="form-select mb-3" v-model="targetLanguage">
-        <option value="">[Select the language]</option>
-        <option value="de">German</option>
-        <option value="en">English</option>
-        <option value="es">Spanish</option>
-        <option value="it">Italian</option>
-      </select>
+
+      <!-- Switch slider -->
+      <div class="srt-toggle-row">
+        <span class="srt-toggle-label" :class="{ active: !srtMode }">Auto generate subtitles</span>
+        <label class="switch">
+          <input type="checkbox" v-model="srtMode" />
+          <span class="slider round"></span>
+        </label>
+        <span class="srt-toggle-label" :class="{ active: srtMode }">Upload SRT files</span>
+      </div>
+
+      <!-- AUTO MODE: language selects -->
+      <div v-if="!srtMode">
+        <p>Source language</p>
+        <select class="form-select mb-3" v-model="sourceLanguage">
+          <option value="auto" v-if="!isAzureMode" selected="selected">[Auto-detect]</option>
+          <option value="" v-else>[Select source language]</option>
+          <option value="de">German</option>
+          <option value="en">English</option>
+          <option value="es">Spanish</option>
+          <option value="it">Italian</option>
+        </select>
+        <p>Target language</p>
+        <select class="form-select mb-3" v-model="targetLanguage">
+          <option value="">[Select the language]</option>
+          <option value="de">German</option>
+          <option value="en">English</option>
+          <option value="es">Spanish</option>
+          <option value="it">Italian</option>
+        </select>
+      </div>
+
+      <!-- SRT MODE: dropzones -->
+      <div v-else>
+        <p>Source language SRT </p>
+        <div
+          class="dropzone srt-dropzone"
+          :class="{ 'has-file': srtSourceFile }"
+          @dragover.prevent
+          @drop.prevent="handleSrtDrop($event, 'source')"
+          @click="$refs.srtSourceInput.click()"
+        >
+          <input
+            type="file"
+            ref="srtSourceInput"
+            accept=".srt"
+            style="display: none"
+            @change="handleSrtInput($event, 'source')"
+          />
+          <span class="srt-icon">📄</span>
+          <p v-if="!srtSourceFile">Drop source <strong>.srt</strong> file here or <span class="browse-link">browse</span></p>
+          <p v-else>✓ {{ srtSourceFile.name }}</p>
+        </div>
+
+        <p>Target language SRT</p>
+        <div
+          class="dropzone srt-dropzone"
+          :class="{ 'has-file': srtTargetFile }"
+          @dragover.prevent
+          @drop.prevent="handleSrtDrop($event, 'target')"
+          @click="$refs.srtTargetInput.click()"
+        >
+          <input
+            type="file"
+            ref="srtTargetInput"
+            accept=".srt"
+            style="display: none"
+            @change="handleSrtInput($event, 'target')"
+          />
+          <span class="srt-icon">📄</span>
+          <p v-if="!srtTargetFile">Drop target <strong>.srt</strong> file here or <span class="browse-link">browse</span></p>
+          <p v-else>✓ {{ srtTargetFile.name }}</p>
+        </div>
+      </div>
+
       <button class="btn btn-lg btn-light fw-bold" @click="handleCreate">Create</button>
     </div>
 
@@ -90,13 +148,18 @@ let tranSubtitles = []
 const transcribingProgress = ref(0)
 const translatingProgress = ref(0)
 
+// SRT mode toggle
+const srtMode = ref(false)
+const srtSourceFile = ref(null)
+const srtTargetFile = ref(null)
+
 const envValue = import.meta.env.VITE_REQUIRE_SOURCE_LANG
 const isAzureMode = computed(() => envValue === 'true')
 const sourceLanguage = ref(isAzureMode.value ? "" : "auto")
 
 const WHISPER_BASE = import.meta.env.VITE_WHISPER_BASE;
 const WHISPER_TOKEN = import.meta.env.VITE_WHISPER_TOKEN || '';
-const AUDIO_EXTRACTION_TOKEN = import.meta.env.VITE_AUDIO_EXTRACTION_TOKEN || ''; // ← fix: letto dall'env
+const AUDIO_EXTRACTION_TOKEN = import.meta.env.VITE_AUDIO_EXTRACTION_TOKEN || '';
 
 const endpointPost       = import.meta.env.VITE_ENDPOINT_POST       || '/conversion-start';
 const endpointStatus     = import.meta.env.VITE_ENDPOINT_STATUS     || '/conversion-status';
@@ -165,8 +228,75 @@ function handleFileInput(event) {
   }
 }
 
+// SRT drag & drop handlers
+function handleSrtDrop(event, type) {
+  const files = event.dataTransfer.files
+  if (files.length > 0 && files[0].name.endsWith('.srt')) {
+    if (type === 'source') srtSourceFile.value = files[0]
+    else srtTargetFile.value = files[0]
+  } else {
+    alert('Per favore trascina un file .srt valido.')
+  }
+}
+
+function handleSrtInput(event, type) {
+  const files = event.target.files
+  if (files.length > 0) {
+    if (type === 'source') srtSourceFile.value = files[0]
+    else srtTargetFile.value = files[0]
+  }
+}
+
+// Parse SRT text into subtitles array
+function parseSrt(srtText) {
+  const blocchi = srtText.trim().split(/\r?\n\r?\n/)
+  return blocchi.map(blocco => {
+    const righe = blocco.split(/\r?\n/)
+    if (righe.length >= 3) {
+      return { timestamp: righe[1], testo: righe.slice(2).join(' ') }
+    }
+    return null
+  }).filter(item => item !== null)
+}
+
+function readFileAsText(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = e => resolve(e.target.result)
+    reader.onerror = () => reject(new Error('Errore lettura file'))
+    reader.readAsText(file)
+  })
+}
+
 function handleCreate() {
-  // Validazione select obbligatorie
+  if (srtMode.value) {
+    // SRT mode: at least one file required
+    if (!srtSourceFile.value && !srtTargetFile.value) {
+      alert('Carica almeno un file SRT.')
+      return
+    }
+    if (!projectName.value.trim()) {
+      alert('Inserisci il nome del progetto.')
+      return
+    }
+    if (!videoFile.value) {
+      alert('Carica il file video.')
+      return
+    }
+    if (!isLogged()) {
+      localStorage.setItem('pendingProject', JSON.stringify({
+        savedProjectName: projectName.value,
+        savedTargetLanguage: targetLanguage.value,
+        redirectAfterLogin: '/'
+      }))
+      router.push('/login')
+      return
+    }
+    createProjectFromSrt()
+    return
+  }
+
+  // Auto mode (original logic)
   if (!targetLanguage.value) {
     alert('Seleziona la lingua di destinazione.');
     return;
@@ -186,6 +316,66 @@ function handleCreate() {
     return
   }
   createProject()
+}
+
+async function createProjectFromSrt() {
+  try {
+    loading.value = true
+
+    let srt2 = '' // source SRT raw text
+    let srt1 = '' // target SRT raw text
+
+    if (srtSourceFile.value) {
+      srt2 = await readFileAsText(srtSourceFile.value)
+      subtitles = parseSrt(srt2)
+      console.log('[NewProject SRT] Source subtitles parsed:', subtitles.length, 'blocchi')
+    }
+
+    if (srtTargetFile.value) {
+      srt1 = await readFileAsText(srtTargetFile.value)
+      tranSubtitles = parseSrt(srt1)
+      console.log('[NewProject SRT] Target subtitles parsed:', tranSubtitles.length, 'blocchi')
+    }
+
+    const now = new Date().toISOString()
+    const projectRes = await apiAdmin.post('/projects', {
+      name: projectName.value,
+      data: JSON.stringify({
+        srt1,
+        srt2,
+        playhead: 0,
+        videoName: videoFile.value.name,
+        created_at: now,
+        last_saved: now
+      })
+    })
+
+    const createdProject = projectRes.data
+    console.log('[NewProject SRT] Progetto salvato:', createdProject)
+
+    loading.value = false
+
+    localStorage.setItem('subtitles', JSON.stringify(subtitles))
+    localStorage.setItem('tranSubtitles', JSON.stringify(tranSubtitles))
+    localStorage.setItem('currentProjectId', createdProject.id)
+    localStorage.setItem('currentProjectName', createdProject.name)
+    localStorage.setItem('currentProjectUserId', createdProject.user_id)
+
+    router.push({
+      name: 'video-player',
+      state: {
+        videoFile: videoFile.value,
+        project: createdProject,
+        subtitles: subtitles,
+        tranSubtitles: tranSubtitles
+      }
+    })
+
+  } catch (error) {
+    console.error('[NewProject SRT] Errore:', error.message)
+    loading.value = false
+    alert(`Errore: ${error.message}`)
+  }
 }
 
 async function createProject() {
@@ -209,7 +399,6 @@ async function createProject() {
       apiConversionPost
     });
 
-    // ─── Params dichiarati subito, usati sia nel blocco audio che nel post principale ───
     const params = {};
     if (targetLanguage.value) {
       params.target = targetLanguage.value;
@@ -218,7 +407,6 @@ async function createProject() {
       params.source = sourceLanguage.value;
     }
 
-    // ─── Blocco Azure: estrazione audio ───────────────────────────────────────────────
     let audiofile = null;
 
     if (isAzureMode.value) {
@@ -237,9 +425,9 @@ async function createProject() {
       const maxAttemptsAudio = 3000;
       const pollIntervalAudio = 1000;
       let conversionCompletedAudio = false;
-      let lastTokenRefreshAudio = Date.now(); // ← rinominato per evitare conflitto
+      let lastTokenRefreshAudio = Date.now();
 
-      for (let attempt = 1; attempt <= maxAttemptsAudio; attempt++) { // ← fix: maxAttemptsAudio
+      for (let attempt = 1; attempt <= maxAttemptsAudio; attempt++) {
         const statusResponseAudio = await axios.get(`${apiAudioStatus}?id=${audioId}`, {
           headers: { 'Authorization': tokenAudio }
         });
@@ -268,7 +456,7 @@ async function createProject() {
           throw new Error(error || 'Conversione audio fallita');
         }
 
-        await new Promise(resolve => setTimeout(resolve, pollIntervalAudio)); // ← fix: pollIntervalAudio
+        await new Promise(resolve => setTimeout(resolve, pollIntervalAudio));
       }
 
       if (!conversionCompletedAudio) {
@@ -283,12 +471,11 @@ async function createProject() {
       console.log('[NewProject] Audio estratto:', audiofile.data);
     }
 
-    // ─── FormData per la trascrizione ─────────────────────────────────────────────────
     const formData = new FormData();
     if (isAzureMode.value) {
       formData.append('audiofile', audiofile.data, 'audio.wav');
-      formData.append('source', params.source ); 
-      formData.append('target', params.target ); 
+      formData.append('source', params.source);
+      formData.append('target', params.target);
     } else {
       formData.append('file', videoFile.value);
     }
@@ -357,19 +544,18 @@ async function createProject() {
     }
 
     if (!isAzureMode.value) {
-  try {
-    const sourceResponse = await axios.get(
-      `${WHISPER_BASE}/conversion-lang?id=${jobId}`,
-      { headers: { 'Authorization': tokenBearer } }
-    );
-    sourceLanguage.value = sourceResponse.data;
-    console.log('[NewProject] Lingua sorgente rilevata:', sourceLanguage.value);
-  } catch (e) {
-    console.warn('[NewProject] Impossibile recuperare la lingua sorgente:', e.message);
-  }
-}
+      try {
+        const sourceResponse = await axios.get(
+          `${WHISPER_BASE}/conversion-lang?id=${jobId}`,
+          { headers: { 'Authorization': tokenBearer } }
+        );
+        sourceLanguage.value = sourceResponse.data;
+        console.log('[NewProject] Lingua sorgente rilevata:', sourceLanguage.value);
+      } catch (e) {
+        console.warn('[NewProject] Impossibile recuperare la lingua sorgente:', e.message);
+      }
+    }
 
-    // --- SRT ORIGINALE ---
     console.log('[NewProject] Recupero SRT originale da:', `${apiConversionOut}?id=${jobId}`);
     const originalResponse = await axios.get(`${apiConversionOut}?id=${jobId}`, {
       headers: isAzureMode.value ? {} : { 'Authorization': tokenBearer }
@@ -388,7 +574,6 @@ async function createProject() {
 
     console.log(`[NewProject] SRT originale: ${subtitles.length} blocchi. Primi 2:`, subtitles.slice(0, 2));
 
-    // --- SRT TRADOTTO ---
     console.log('[NewProject] Recupero SRT tradotto da:', `${apiConversionTranslated}?id=${jobId}`);
     const translatedResponse = await axios.get(`${apiConversionTranslated}?id=${jobId}`, {
       headers: isAzureMode.value ? {} : { 'Authorization': tokenBearer }
@@ -505,6 +690,98 @@ h1 {
 .dropzone:hover {
   border-color: #357abd;
   background-color: #3a3a3a;
+}
+
+.srt-dropzone {
+  padding: 1.2rem 2rem;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.srt-dropzone.has-file {
+  border-color: #4caf50;
+  background-color: #1e3a1e;
+  color: #81c784;
+}
+
+.srt-dropzone p {
+  margin: 0;
+  color: inherit;
+}
+
+.srt-icon {
+  font-size: 1.4rem;
+  flex-shrink: 0;
+}
+
+/* Toggle switch row */
+.srt-toggle-row {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin: 1rem 0 1.25rem 0;
+}
+
+.srt-toggle-label {
+  color: #666;
+  font-size: 0.85rem;
+  font-weight: 500;
+  transition: color 0.2s;
+}
+
+.srt-toggle-label.active {
+  color: #4a90e2;
+}
+
+/* iOS-style toggle */
+.switch {
+  position: relative;
+  display: inline-block;
+  width: 48px;
+  height: 26px;
+  flex-shrink: 0;
+}
+
+.switch input {
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.slider {
+  position: absolute;
+  cursor: pointer;
+  inset: 0;
+  background-color: #444;
+  transition: 0.3s;
+}
+
+.slider:before {
+  position: absolute;
+  content: "";
+  height: 20px;
+  width: 20px;
+  left: 3px;
+  bottom: 3px;
+  background-color: white;
+  transition: 0.3s;
+}
+
+input:checked + .slider {
+  background-color: #4a90e2;
+}
+
+input:checked + .slider:before {
+  transform: translateX(22px);
+}
+
+.slider.round {
+  border-radius: 26px;
+}
+
+.slider.round:before {
+  border-radius: 50%;
 }
 
 .form-select {
