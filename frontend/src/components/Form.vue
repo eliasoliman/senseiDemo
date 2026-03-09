@@ -498,45 +498,66 @@ async function createProject() {
     let lastTokenRefresh = Date.now();
 
     for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-      const statusResponse = await axios.get(`${apiConversionStatus}?id=${jobId}`, {
-        headers: isAzureMode.value ? {} : { 'Authorization': tokenBearer }
-      });
+  const statusResponse = await axios.get(`${apiConversionStatus}?id=${jobId}`, {
+    headers: isAzureMode.value ? {} : { 'Authorization': tokenBearer }
+  });
 
-      if (Date.now() - lastTokenRefresh > 10 * 60 * 1000) {
-        try {
-          await apiAdmin.get('/me');
-          lastTokenRefresh = Date.now();
-          console.log('[NewProject] Token matita aggiornato');
-        } catch (e) {
-          console.warn('[NewProject] Keep-alive token fallito:', e.message);
-        }
-      }
-
-      const { status, error, stage, progress } = statusResponse.data;
-      console.log(`[NewProject] Poll #${attempt} - status: "${status}" | stage: "${stage}" | progress: ${progress ?? 'n/a'}`);
-
-      if (stage === 'transcribing') {
-        transcribingProgress.value = Math.trunc(progress || 0);
-      } else if (stage === 'translating') {
-        transcribingProgress.value = 100;
-        translatingProgress.value = Math.trunc(progress || 0);
-      }
-
-      if (status === 'completed') {
-        transcribingProgress.value = 100;
-        translatingProgress.value = 100;
-        conversionCompleted = true;
-        console.log('[NewProject] Conversione completata!');
-        break;
-      }
-
-      if (status === 'failed' || status === 'error') {
-        console.error('[NewProject] Conversione fallita. Errore server:', error);
-        throw new Error(error || 'Conversione fallita');
-      }
-
-      await new Promise(resolve => setTimeout(resolve, pollInterval));
+  if (Date.now() - lastTokenRefresh > 10 * 60 * 1000) {
+    try {
+      await apiAdmin.get('/me');
+      lastTokenRefresh = Date.now();
+      console.log('[NewProject] Token matita aggiornato');
+    } catch (e) {
+      console.warn('[NewProject] Keep-alive token fallito:', e.message);
     }
+  }
+
+  const responseData = statusResponse.data;
+
+  if (isAzureMode.value) {
+    const { id, state } = responseData;
+    console.log(`[NewProject] Poll #${attempt} - state: "${state}" | id: ${id}`);
+
+    if (state === 'ready') {
+      transcribingProgress.value = 100;
+      translatingProgress.value = 100;
+      conversionCompleted = true;
+      console.log('[NewProject] Conversione completata!');
+      break;
+    }
+
+    if (state === 'fail' || state === 'unknown') {
+      console.error('[NewProject] Conversione fallita. State:', state);
+      throw new Error(`Conversione fallita: ${state}`);
+    }
+
+  } else {
+    const { status, error, stage, progress } = responseData;
+    console.log(`[NewProject] Poll #${attempt} - status: "${status}" | stage: "${stage}" | progress: ${progress ?? 'n/a'}`);
+
+    if (stage === 'transcribing') {
+      transcribingProgress.value = Math.trunc(progress || 0);
+    } else if (stage === 'translating') {
+      transcribingProgress.value = 100;
+      translatingProgress.value = Math.trunc(progress || 0);
+    }
+
+    if (status === 'completed') {
+      transcribingProgress.value = 100;
+      translatingProgress.value = 100;
+      conversionCompleted = true;
+      console.log('[NewProject] Conversione completata!');
+      break;
+    }
+
+    if (status === 'failed' || status === 'error') {
+      console.error('[NewProject] Conversione fallita. Errore server:', error);
+      throw new Error(error || 'Conversione fallita');
+    }
+  }
+
+  await new Promise(resolve => setTimeout(resolve, pollInterval)); // ← dentro il for
+}
 
     if (!conversionCompleted) {
       console.error('[NewProject] Timeout raggiunto dopo', maxAttempts, 'tentativi');
