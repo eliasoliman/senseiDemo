@@ -10,6 +10,10 @@ const props = defineProps({
   pixelsPerSecond: {
     type: Number,
     default: 80
+  },
+  activeTrack: {
+    type: String,
+    default: null
   }
 })
 
@@ -31,7 +35,47 @@ const subtitleType = ref(null)
 const isClick = ref(true)
 const snapshotSaved = ref(false)
 
-const activeSidebarTrack = ref('orig')
+// ─── Track availability ───────────────────────────────────────────────────────
+const hasOriginal = computed(() => props.subtitles && props.subtitles.length > 0)
+const hasTranslation = computed(() => props.tranSubtitles && props.tranSubtitles.length > 0)
+
+// ─── Dynamic layout rows based on which tracks exist ─────────────────────────
+// Row heights: waveform=60px, orig=60px, tran=60px
+// top offsets for subtitle blocks depend on which tracks are visible
+const origTop = computed(() => '70px') // always below waveform
+const tranTop = computed(() => hasOriginal.value ? '130px' : '70px')
+const trackAreaHeight = computed(() => {
+  if (hasOriginal.value && hasTranslation.value) return '200px'
+  if (hasOriginal.value || hasTranslation.value) return '140px'
+  return '80px'
+})
+const leftGridRows = computed(() => {
+  if (hasOriginal.value && hasTranslation.value) return '60px 60px 60px'
+  if (hasOriginal.value || hasTranslation.value) return '60px 60px'
+  return '60px'
+})
+
+const activeSidebarTrack = ref(
+  props.activeTrack ?? (!props.subtitles?.length && props.tranSubtitles?.length ? 'tran' : 'orig')
+)
+
+// Sync from parent (sidebar tab clicks)
+watch(() => props.activeTrack, (val) => {
+  if (val && val !== activeSidebarTrack.value) {
+    activeSidebarTrack.value = val
+  }
+})
+
+// Auto-switch if the active track becomes empty
+watch([hasOriginal, hasTranslation], () => {
+  if (activeSidebarTrack.value === 'orig' && !hasOriginal.value && hasTranslation.value) {
+    activeSidebarTrack.value = 'tran'
+    emit('update:activeTrack', 'tran')
+  } else if (activeSidebarTrack.value === 'tran' && !hasTranslation.value && hasOriginal.value) {
+    activeSidebarTrack.value = 'orig'
+    emit('update:activeTrack', 'orig')
+  }
+}, { immediate: true })
 
 const MIN_SUBTITLE_DURATION = 0.5
 
@@ -146,7 +190,6 @@ const handleSubtitleClick = (sub, type) => {
   }
 }
 
-// ── RAF-based playhead sync ──────────────────────────────────────────────────
 let rafId = null
 
 const updateProgress = () => {
@@ -170,7 +213,6 @@ const stopRaf = () => {
     rafId = null
   }
 }
-// ────────────────────────────────────────────────────────────────────────────
 
 watch(currentTime, (newVal) => {
   if (!timelineWrapper.value || !isPlaying.value) return
@@ -365,7 +407,6 @@ onMounted(() => {
   if (props.videoRef) {
     const videoElement = props.videoRef.value || props.videoRef
 
-    // RAF sempre attivo — nessun listener play/pause/seeked per il currentTime
     const loop = () => {
       if (props.videoRef) {
         const el = props.videoRef.value || props.videoRef
@@ -376,7 +417,6 @@ onMounted(() => {
     }
     rafId = requestAnimationFrame(loop)
 
-    // Scroll alla posizione del playhead dopo ogni seek manuale
     videoElement.addEventListener('seeked', () => {
       if (timelineWrapper.value) {
         const container = timelineWrapper.value
@@ -407,11 +447,11 @@ onUnmounted(() => {
 
 <template>
   <div class="container">
-    <div class="left">
+    <div class="left" :style="{ gridTemplateRows: leftGridRows }">
       <div class="waveform-label">Waveform</div>
 
-      <!-- Original first -->
-      <div class="track-label">
+      <!-- Original track label — only if subtitles exist -->
+      <div v-if="hasOriginal" class="track-label">
         <span>Original</span>
         <button
           class="eye-btn"
@@ -431,8 +471,8 @@ onUnmounted(() => {
         </button>
       </div>
 
-      <!-- Translated second -->
-      <div class="track-label">
+      <!-- Translated track label — only if tranSubtitles exist -->
+      <div v-if="hasTranslation" class="track-label">
         <span>Translated</span>
         <button
           class="eye-btn"
@@ -469,13 +509,13 @@ onUnmounted(() => {
         </div>
       </div>
 
-      <div class="track-area" :style="{ width: (duration * pixelsPerSecond) + 'px' }">
+      <div class="track-area" :style="{ width: (duration * pixelsPerSecond) + 'px', height: trackAreaHeight }">
         <div 
           class="playhead" 
           :style="{ transform: `translateX(${currentTime * pixelsPerSecond}px)` }"
           @mousedown="handlePlayheadMouseDown"
         >
-          <div class="playhead-line"></div>
+          <div class="playhead-line" :style="{ height: `calc(${trackAreaHeight} + 30px)` }"></div>
         </div>
 
         <div 
@@ -502,69 +542,73 @@ onUnmounted(() => {
           </div>
         </div>
 
-        <!-- Original track first (top: 70px) -->
-        <div 
-          v-for="sub in processedSubtitles" 
-          :key="'orig-' + sub.id"
-          class="sub-block sub-block-orig"
-          :class="{ 
-            'sub-block-dragging': draggingSubtitle?.id === sub.id || resizingSubtitle?.id === sub.id,
-            'sub-block-sidebar-active': activeSidebarTrack === 'orig',
-            'sub-block-active': isSubtitleActive(sub),
-          }"
-          :style="{ 
-            position: 'absolute',
-            left: '0px',
-            top: '70px',
-            width: (sub.duration * pixelsPerSecond) + 'px',
-            transform: `translateX(${sub.start * pixelsPerSecond}px)` 
-          }"
-          :title="sub.originalTimestamp"
-          @click="handleSubtitleClick(sub, 'orig')"
-          @mousedown="(e) => handleSubtitleMouseDown(e, sub, null, 'orig')"
-        >
+        <!-- Original track — only if subtitles exist -->
+        <template v-if="hasOriginal">
           <div 
-            class="resize-handle resize-handle-left"
-            @mousedown.stop="(e) => handleSubtitleMouseDown(e, sub, 'left', 'orig')"
-          ></div>
-          <span class="sub-block-text">{{ sub.text }}</span>
-          <div 
-            class="resize-handle resize-handle-right"
-            @mousedown.stop="(e) => handleSubtitleMouseDown(e, sub, 'right', 'orig')"
-          ></div>
-        </div>
+            v-for="sub in processedSubtitles" 
+            :key="'orig-' + sub.id"
+            class="sub-block sub-block-orig"
+            :class="{ 
+              'sub-block-dragging': draggingSubtitle?.id === sub.id || resizingSubtitle?.id === sub.id,
+              'sub-block-sidebar-active': activeSidebarTrack === 'orig',
+              'sub-block-active': isSubtitleActive(sub),
+            }"
+            :style="{ 
+              position: 'absolute',
+              left: '0px',
+              top: origTop,
+              width: (sub.duration * pixelsPerSecond) + 'px',
+              transform: `translateX(${sub.start * pixelsPerSecond}px)` 
+            }"
+            :title="sub.originalTimestamp"
+            @click="handleSubtitleClick(sub, 'orig')"
+            @mousedown="(e) => handleSubtitleMouseDown(e, sub, null, 'orig')"
+          >
+            <div 
+              class="resize-handle resize-handle-left"
+              @mousedown.stop="(e) => handleSubtitleMouseDown(e, sub, 'left', 'orig')"
+            ></div>
+            <span class="sub-block-text">{{ sub.text }}</span>
+            <div 
+              class="resize-handle resize-handle-right"
+              @mousedown.stop="(e) => handleSubtitleMouseDown(e, sub, 'right', 'orig')"
+            ></div>
+          </div>
+        </template>
         
-        <!-- Translated track second (top: 130px) -->
-        <div 
-          v-for="sub in processedTranSubtitles" 
-          :key="'tran-' + sub.id"
-          class="sub-block sub-block-tran"
-          :class="{ 
-            'sub-block-active': isSubtitleActive(sub),
-            'sub-block-dragging': draggingSubtitle?.id === sub.id || resizingSubtitle?.id === sub.id,
-            'sub-block-sidebar-active': activeSidebarTrack === 'tran'
-          }"
-          :style="{ 
-            position: 'absolute',
-            left: '0px',
-            top: '130px',
-            width: (sub.duration * pixelsPerSecond) + 'px',
-            transform: `translateX(${sub.start * pixelsPerSecond}px)` 
-          }"
-          :title="sub.originalTimestamp"
-          @click="handleSubtitleClick(sub, 'tran')"
-          @mousedown="(e) => handleSubtitleMouseDown(e, sub, null, 'tran')"
-        >
+        <!-- Translated track — only if tranSubtitles exist -->
+        <template v-if="hasTranslation">
           <div 
-            class="resize-handle resize-handle-left"
-            @mousedown.stop="(e) => handleSubtitleMouseDown(e, sub, 'left', 'tran')"
-          ></div>
-          <span class="sub-block-text">{{ sub.text }}</span>
-          <div 
-            class="resize-handle resize-handle-right"
-            @mousedown.stop="(e) => handleSubtitleMouseDown(e, sub, 'right', 'tran')"
-          ></div>
-        </div>
+            v-for="sub in processedTranSubtitles" 
+            :key="'tran-' + sub.id"
+            class="sub-block sub-block-tran"
+            :class="{ 
+              'sub-block-active': isSubtitleActive(sub),
+              'sub-block-dragging': draggingSubtitle?.id === sub.id || resizingSubtitle?.id === sub.id,
+              'sub-block-sidebar-active': activeSidebarTrack === 'tran'
+            }"
+            :style="{ 
+              position: 'absolute',
+              left: '0px',
+              top: tranTop,
+              width: (sub.duration * pixelsPerSecond) + 'px',
+              transform: `translateX(${sub.start * pixelsPerSecond}px)` 
+            }"
+            :title="sub.originalTimestamp"
+            @click="handleSubtitleClick(sub, 'tran')"
+            @mousedown="(e) => handleSubtitleMouseDown(e, sub, null, 'tran')"
+          >
+            <div 
+              class="resize-handle resize-handle-left"
+              @mousedown.stop="(e) => handleSubtitleMouseDown(e, sub, 'left', 'tran')"
+            ></div>
+            <span class="sub-block-text">{{ sub.text }}</span>
+            <div 
+              class="resize-handle resize-handle-right"
+              @mousedown.stop="(e) => handleSubtitleMouseDown(e, sub, 'right', 'tran')"
+            ></div>
+          </div>
+        </template>
       </div>
     </div>
   </div>
@@ -581,8 +625,8 @@ onUnmounted(() => {
 .left {
   padding-top: 30px;
   display: grid;
-  grid-template-rows: 60px 60px 60px;
   align-items: center;
+  /* gridTemplateRows set dynamically via :style */
 }
 
 .waveform-label {
@@ -674,13 +718,10 @@ onUnmounted(() => {
 }
 
 .track-area {
-  height: 200px;
   position: relative;
   background: #141414;
   background-image: linear-gradient(to right, #222 1px, transparent 1px);
   background-size: v-bind('pixelsPerSecond + "px"') 100%;
-  display: grid;
-  grid-template-rows: 60px 60px 60px;
 }
 
 .waveform-track {
@@ -730,9 +771,9 @@ onUnmounted(() => {
 
 .playhead-line {
   width: 2px;
-  height: 230px;
   background: #ff4500;
   box-shadow: 0 0 5px rgba(255, 69, 0, 0.5);
+  /* height set dynamically via :style */
 }
 
 .sub-block {
@@ -760,7 +801,6 @@ onUnmounted(() => {
 .sub-block-tran:hover {
   background: rgba(0, 120, 215, 0.8);
 }
-
 
 .sub-block-orig {
   background: rgba(0, 170, 140, 0.45);

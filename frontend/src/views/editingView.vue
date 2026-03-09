@@ -8,14 +8,11 @@ const router = useRouter()
 const videoUrl = ref('')
 const videoFile = ref(null)
 
-// ─── Progetto corrente (letto da history.state al mount) ─────────────────────
 const currentProject = ref(null)
 const isSaving = ref(false)
 
-// ─── Back con conferma salvataggio ───────────────────────────────────────────
 const showBackConfirm = ref(false)
 
-// Modal bloccante per il drop del video
 const showVideoDropModal = ref(false)
 const videoDropError = ref('')
 const subtitles = ref([])
@@ -31,20 +28,20 @@ const subtitlesScroll = ref(null)
 const selectedSubtitleIndex = ref(-1)
 const isPlayingSelectedSubtitle = ref(false)
 
-// --- FIX 1: RECUPERO NOME VIDEO CON PARSING RICORSIVO ---
+// ─── Track availability ───────────────────────────────────────────────────────
+const hasOriginal = computed(() => subtitles.value.length > 0)
+const hasTranslation = computed(() => tranSubtitles.value.length > 0)
+
 const expectedVideoName = computed(() => {
   if (!currentProject.value) return '';
   let d = currentProject.value.data;
   if (!d) return '';
-  try {
-    while (typeof d === 'string') { d = JSON.parse(d); }
-  } catch (e) { return ''; }
+  try { while (typeof d === 'string') { d = JSON.parse(d); } } catch (e) { return ''; }
   return d.videoName || (d.data && d.data.videoName) || '';
 });
 
 const projectName = computed(() => currentProject.value?.name || 'project')
 
-// --- FIX 2: WATCHER PER PULIRE I DATI APPENA ARRIVANO ---
 watch(currentProject, (newVal) => {
   if (newVal && newVal.data && typeof newVal.data === 'string') {
     try {
@@ -56,6 +53,15 @@ watch(currentProject, (newVal) => {
 }, { immediate: true, deep: true });
 
 const activeSidebarTrack = ref('orig')
+
+// ─── Auto-switch track if the active one is empty ────────────────────────────
+watch([hasOriginal, hasTranslation], () => {
+  if (activeSidebarTrack.value === 'orig' && !hasOriginal.value && hasTranslation.value) {
+    activeSidebarTrack.value = 'tran'
+  } else if (activeSidebarTrack.value === 'tran' && !hasTranslation.value && hasOriginal.value) {
+    activeSidebarTrack.value = 'orig'
+  }
+}, { immediate: true })
 
 const sidebarSubtitles = computed(() =>
   activeSidebarTrack.value === 'tran' ? tranSubtitles.value : subtitles.value
@@ -124,8 +130,6 @@ const formatSrtTimestamp = (seconds) => {
 
 const buildTimestamp = (startSec, endSec) => `${formatSrtTimestamp(startSec)} --> ${formatSrtTimestamp(endSec)}`
 
-// ─── ADD ─────────────────────────────────────────────────────────────────────
-
 const addSubtitleBetween = (index) => {
   saveUndoSnapshot()
   const DEFAULT_DURATION = 0.4
@@ -170,8 +174,6 @@ const addSubtitleAtEnd = () => {
   targetArray.value.push({ timestamp: buildTimestamp(lastEnd, lastEnd + DEFAULT_DURATION), testo: '' })
   localStorage.setItem(activeSidebarTrack.value === 'tran' ? 'tranSubtitles' : 'subtitles', JSON.stringify(targetArray.value))
 }
-
-// ─── DUPLICATE ───────────────────────────────────────────────────────────────
 
 const duplicateSubtitleBetween = (index) => {
   saveUndoSnapshot()
@@ -221,8 +223,6 @@ const duplicateSubtitleAtEnd = () => {
   targetArray.value.push({ timestamp: buildTimestamp(lastEnd, lastEnd + DEFAULT_DURATION), testo: sourceText })
   localStorage.setItem(activeSidebarTrack.value === 'tran' ? 'tranSubtitles' : 'subtitles', JSON.stringify(targetArray.value))
 }
-
-// ─────────────────────────────────────────────────────────────────────────────
 
 const mergeSubtitles = (index) => {
   saveUndoSnapshot()
@@ -322,8 +322,8 @@ const handleExport = () => {
   const pName = currentProject.value?.name || 'project'
   const today = new Date()
   const date = `${String(today.getDate()).padStart(2, '0')}-${String(today.getMonth() + 1).padStart(2, '0')}-${today.getFullYear()}`
-  downloadSrt(arrayToSrt(tranSubtitles.value), `${pName}_${targetLanguage.value}_${date}.srt`)
-  downloadSrt(arrayToSrt(subtitles.value), `${pName}_${sourceLanguage.value}_${date}.srt`)
+  if (hasTranslation.value) downloadSrt(arrayToSrt(tranSubtitles.value), `${pName}_${targetLanguage.value}_${date}.srt`)
+  if (hasOriginal.value) downloadSrt(arrayToSrt(subtitles.value), `${pName}_${sourceLanguage.value}_${date}.srt`)
 }
 
 const scrollSidebarToActive = () => {
@@ -468,7 +468,6 @@ const apiFetch = async (url, options = {}) => {
     headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}`, ...(options.headers || {}) }
   })
   const refreshedToken = res.headers.get('x-refresh-token')
-  console.log('x-refresh-token letto dal JS:', refreshedToken)
   if (refreshedToken) localStorage.setItem('subtitles_token', refreshedToken)
   if (res.status === 401) { localStorage.removeItem('subtitles_token'); router.push('/login'); return null }
   return res
@@ -524,9 +523,6 @@ const loadVideoFile = (file) => {
     videoDropError.value = `Errore: il file selezionato (${file.name}) non corrisponde al video originale del progetto: "${expectedVideoName.value}".`;
     return;
   }
-  console.log('expectedVideoName:', expectedVideoName.value);
-  console.log('file.name:', file.name);
-  console.log('currentProject:', JSON.stringify(currentProject.value));
   videoFile.value = file
   videoUrl.value = URL.createObjectURL(file)
   showVideoDropModal.value = false
@@ -545,6 +541,13 @@ onMounted(() => {
   const storedTran = localStorage.getItem('tranSubtitles')
   if (storedTran) tranSubtitles.value = JSON.parse(storedTran)
 
+  // ─── Set default track based on which arrays are populated ─────────────────
+  if (!hasOriginal.value && hasTranslation.value) {
+    activeSidebarTrack.value = 'tran'
+  } else {
+    activeSidebarTrack.value = 'orig'
+  }
+
   const projectFromState = history.state?.project
   const backupId = localStorage.getItem('currentProjectId')
 
@@ -557,7 +560,6 @@ onMounted(() => {
     localStorage.setItem('currentProjectBackup', JSON.stringify(currentProject.value))
     localStorage.setItem('currentProjectId', projectFromState.id)
     localStorage.setItem('currentProjectName', projectFromState.name)
-    console.log("Progetto caricato correttamente:", currentProject.value);
   } else if (backupId) {
     const fullBackup = localStorage.getItem('currentProjectBackup')
     if (fullBackup) currentProject.value = JSON.parse(fullBackup)
@@ -643,10 +645,38 @@ watch(videoPlayer, (newPlayer) => { if (newPlayer) setupVideoSync() })
     <div class="container">
       <div class="content">
         <div class="sidebar">
-          <div class="sidebar-track-badge" :class="activeSidebarTrack === 'tran' ? 'badge-tran' : 'badge-orig'">
+
+          <!-- Track switcher: shown only if BOTH tracks exist -->
+          <div v-if="hasOriginal && hasTranslation" class="track-switcher">
+            <button
+              class="track-btn"
+              :class="{ active: activeSidebarTrack === 'tran' }"
+              @click="activeSidebarTrack = 'tran'"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" fill="currentColor" viewBox="0 0 16 16">
+                <path d="M4.545 6.714 4.11 8H3l1.862-5h1.284L8 8H6.833l-.435-1.286zm1.634-.736L5.5 3.956h-.049l-.679 2.022z"/>
+                <path d="M0 2a2 2 0 0 1 2-2h7a2 2 0 0 1 2 2v3h3a2 2 0 0 1 2 2v7a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2v-3H2a2 2 0 0 1-2-2zm2-1a1 1 0 0 0-1 1v7a1 1 0 0 0 1 1h2.5v-2A2 2 0 0 1 6.5 6H9V2a1 1 0 0 0-1-1z"/>
+              </svg>
+              Translation
+            </button>
+            <button
+              class="track-btn"
+              :class="{ active: activeSidebarTrack === 'orig' }"
+              @click="activeSidebarTrack = 'orig'"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" fill="currentColor" viewBox="0 0 16 16">
+                <path d="M16 8s-3-5.5-8-5.5S0 8 0 8s3 5.5 8 5.5S16 8 16 8M1.173 8a13 13 0 0 1 1.66-2.043C4.12 4.668 5.88 3.5 8 3.5s3.879 1.168 5.168 2.457A13 13 0 0 1 14.828 8q-.086.13-.195.288c-.335.48-.83 1.12-1.465 1.755C11.879 11.332 10.119 12.5 8 12.5s-3.879-1.168-5.168-2.457A13 13 0 0 1 1.172 8z"/>
+                <path d="M8 5.5a2.5 2.5 0 1 0 0 5 2.5 2.5 0 0 0 0-5M4.5 8a3.5 3.5 0 1 1 7 0 3.5 3.5 0 0 1-7 0"/>
+              </svg>
+              Original
+            </button>
+          </div>
+
+          <!-- Badge when only one track exists -->
+          <div v-else class="sidebar-track-badge" :class="activeSidebarTrack === 'tran' ? 'badge-tran' : 'badge-orig'">
             <svg v-if="activeSidebarTrack === 'tran'" xmlns="http://www.w3.org/2000/svg" width="13" height="13" fill="currentColor" viewBox="0 0 16 16">
-              <path d="M16 8s-3-5.5-8-5.5S0 8 0 8s3 5.5 8 5.5S16 8 16 8M1.173 8a13 13 0 0 1 1.66-2.043C4.12 4.668 5.88 3.5 8 3.5s3.879 1.168 5.168 2.457A13 13 0 0 1 14.828 8q-.086.13-.195.288c-.335.48-.83 1.12-1.465 1.755C11.879 11.332 10.119 12.5 8 12.5s-3.879-1.168-5.168-2.457A13 13 0 0 1 1.172 8z"/>
-              <path d="M8 5.5a2.5 2.5 0 1 0 0 5 2.5 2.5 0 0 0 0-5M4.5 8a3.5 3.5 0 1 1 7 0 3.5 3.5 0 0 1-7 0"/>
+              <path d="M4.545 6.714 4.11 8H3l1.862-5h1.284L8 8H6.833l-.435-1.286zm1.634-.736L5.5 3.956h-.049l-.679 2.022z"/>
+              <path d="M0 2a2 2 0 0 1 2-2h7a2 2 0 0 1 2 2v3h3a2 2 0 0 1 2 2v7a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2v-3H2a2 2 0 0 1-2-2zm2-1a1 1 0 0 0-1 1v7a1 1 0 0 0 1 1h2.5v-2A2 2 0 0 1 6.5 6H9V2a1 1 0 0 0-1-1z"/>
             </svg>
             <svg v-else xmlns="http://www.w3.org/2000/svg" width="13" height="13" fill="currentColor" viewBox="0 0 16 16">
               <path d="M16 8s-3-5.5-8-5.5S0 8 0 8s3 5.5 8 5.5S16 8 16 8M1.173 8a13 13 0 0 1 1.66-2.043C4.12 4.668 5.88 3.5 8 3.5s3.879 1.168 5.168 2.457A13 13 0 0 1 14.828 8q-.086.13-.195.288c-.335.48-.83 1.12-1.465 1.755C11.879 11.332 10.119 12.5 8 12.5s-3.879-1.168-5.168-2.457A13 13 0 0 1 1.172 8z"/>
@@ -657,7 +687,6 @@ watch(videoPlayer, (newPlayer) => { if (newPlayer) setupVideoSync() })
 
           <div class="subtitles-scroll" ref="subtitlesScroll">
 
-            <!-- ADD / DUPLICATE BEFORE FIRST -->
             <div class="subtitle-separator subtitle-separator--edge">
               <div class="separator-line"></div>
               <div class="separator-actions">
@@ -692,7 +721,6 @@ watch(videoPlayer, (newPlayer) => { if (newPlayer) setupVideoSync() })
               </div>
             </template>
 
-            <!-- ADD / DUPLICATE AFTER LAST -->
             <div class="subtitle-separator subtitle-separator--edge">
               <div class="separator-line"></div>
               <div class="separator-actions">
@@ -742,6 +770,7 @@ watch(videoPlayer, (newPlayer) => { if (newPlayer) setupVideoSync() })
               v-model:subtitles="subtitles"
               v-model:tranSubtitles="tranSubtitles"
               v-model:pixelsPerSecond="pixelsPerSecond"
+              :activeTrack="activeSidebarTrack"
               @update:activeTrack="activeSidebarTrack = $event"
             />
           </div>
@@ -862,6 +891,21 @@ h3 { color: rgba(31, 125, 240, 0.918); }
   overflow: hidden; height: 100%; align-items: stretch; max-height: 100%;
 }
 .sidebar { background-color: rgb(40, 40, 40); display: flex; flex-direction: column; overflow: hidden; height: 100%; }
+
+/* Track switcher (shown when both tracks exist) */
+.track-switcher {
+  display: flex; flex-shrink: 0;
+  border-bottom: 1px solid rgba(255,255,255,0.06);
+}
+.track-btn {
+  flex: 1; display: flex; align-items: center; justify-content: center; gap: 5px;
+  padding: 7px 8px; background: transparent; border: none; border-bottom: 2px solid transparent;
+  color: #555; font-size: 0.72rem; font-weight: 700; letter-spacing: 0.05em;
+  text-transform: uppercase; cursor: pointer; transition: all 0.2s ease;
+}
+.track-btn:hover { color: #94a3b8; background: rgba(255,255,255,0.04); }
+.track-btn.active { color: rgba(31, 125, 240, 0.918); border-bottom-color: rgba(31, 125, 240, 0.918); background: rgba(31, 125, 240, 0.07); }
+.track-btn:last-child.active { color: #00cc99; border-bottom-color: #00cc99; background: rgba(0, 204, 153, 0.07); }
 
 .sidebar-track-badge {
   display: flex; align-items: center; gap: 6px; padding: 6px 12px;
