@@ -589,25 +589,28 @@ async function createProject() {
       headers: isAzureMode.value ? {} : { 'Authorization': tokenBearer }
     });
 
-    const srt2 = originalResponse.data;
+    const rawOriginal = originalResponse.data;
 
-    const blocchiOriginal = srt2.trim().split(/\r?\n\r?\n/);
-    subtitles = blocchiOriginal.map(blocco => {
-      const righe = blocco.split(/\r?\n/);
-      if (righe.length >= 3) {
-        return { timestamp: righe[1], testo: righe.slice(2).join(' ') };
-      }
-      return null;
-    }).filter(item => item !== null);
+        console.log('[NewProject] Recupero SRT tradotto da:', `${apiConversionTranslated}?id=${jobId}`);
+        const translatedResponse = await axios.get(`${apiConversionTranslated}?id=${jobId}`, {
+          headers: isAzureMode.value ? {} : { 'Authorization': tokenBearer }
+        });
+        const rawTranslated = translatedResponse.data;
 
-    console.log(`[NewProject] SRT originale: ${subtitles.length} blocchi. Primi 2:`, subtitles.slice(0, 2));
+        // Azure restituisce i due SRT invertiti, quindi li swappiamo
+        const srt2 = isAzureMode.value ? rawTranslated : rawOriginal;
+        const srt1 = isAzureMode.value ? rawOriginal   : rawTranslated;
 
-    console.log('[NewProject] Recupero SRT tradotto da:', `${apiConversionTranslated}?id=${jobId}`);
-    const translatedResponse = await axios.get(`${apiConversionTranslated}?id=${jobId}`, {
-      headers: isAzureMode.value ? {} : { 'Authorization': tokenBearer }
-    });
+        const blocchiOriginal = srt2.trim().split(/\r?\n\r?\n/);
+          subtitles = blocchiOriginal.map(blocco => {
+          const righe = blocco.split(/\r?\n/);
+          if (righe.length >= 3) {
+            return { timestamp: righe[1], testo: righe.slice(2).join(' ') };
+          }
+          return null;
+        }).filter(item => item !== null);
 
-    const srt1 = translatedResponse.data;
+        console.log(`[NewProject] SRT originale: ...`)
 
     const blocchiTradotti = srt1.trim().split(/\r?\n\r?\n/);
     tranSubtitles = blocchiTradotti.map(blocco => {
