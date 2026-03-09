@@ -556,7 +556,7 @@ async function createProject() {
     }
   }
 
-  await new Promise(resolve => setTimeout(resolve, pollInterval)); // ← dentro il for
+  await new Promise(resolve => setTimeout(resolve, pollInterval)); 
 }
 
     if (!conversionCompleted) {
