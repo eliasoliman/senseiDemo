@@ -171,14 +171,14 @@ const apiConversionStatus     = `${WHISPER_BASE}${endpointStatus}`;
 const apiConversionOut        = `${WHISPER_BASE}${endpointOut}`;
 const apiConversionTranslated = `${WHISPER_BASE}${endpointTranslated}`;
 
-const apiAudioPost   = 'https://api.matita.net/whisper/audio-extraction-start'
-const apiAudioStatus = 'https://api.matita.net/whisper/audio-extraction-status'
-const apiAudioGet    = 'https://api.matita.net/whisper/audio-extraction-out'
+const apiAudioPost   = import.meta.env.VITE_API_AUDIO_START_BASE || 'https://api.matita.net/whisper/audio-extraction-start'
+const apiAudioStatus = import.meta.env.VITE_API_AUDIO_STATUS_BASE || 'https://api.matita.net/whisper/audio-extraction-status'
+const apiAudioGet    = import.meta.env.VITE_API_AUDIO_OUT_BASE || 'https://api.matita.net/whisper/audio-extraction-out'
 
 const tokenBearer = `Bearer ${WHISPER_TOKEN}`;
 const tokenAudio  = `Bearer ${AUDIO_EXTRACTION_TOKEN}`;
 
-const API_BASE = 'https://api.matita.net/subtitles-admin'
+const API_BASE = import.meta.env.VITE_API_BASE || 'https://api.matita.net/subtitles-admin'
 const apiAdmin = axios.create({ baseURL: API_BASE })
 
 apiAdmin.interceptors.request.use((config) => {
