@@ -489,7 +489,11 @@ async function createProject() {
       },
       params
     });
-    const jobId = conversionJob.data.id;
+
+    const jobId = isAzureMode.value
+      ? conversionJob.data.data.id
+      : conversionJob.data.id;
+    
     console.log('[NewProject] Job avviato, ID:', jobId, '| Risposta completa:', conversionJob.data);
 
     const maxAttempts = 3000;
@@ -512,7 +516,10 @@ async function createProject() {
     }
   }
 
-  const responseData = statusResponse.data;
+    const responseData = isAzureMode.value
+    ? statusResponse.data.data
+    : statusResponse.data;
+  
 
   if (isAzureMode.value) {
     const { id, state } = responseData;
