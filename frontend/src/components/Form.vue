@@ -161,7 +161,8 @@ const WHISPER_BASE = import.meta.env.VITE_WHISPER_BASE;
 const WHISPER_TOKEN = import.meta.env.VITE_WHISPER_TOKEN || '';
 const AUDIO_EXTRACTION_TOKEN = import.meta.env.VITE_AUDIO_EXTRACTION_TOKEN || '';
 
-const SERVICE_BASE = import.meta.env.VITE_API_BASE;
+const SERVICE_BASE = import.meta.env.VITE_SERVICE_BASE || 'https://api.matita.net/subtitles-admin'
+const SERVICE_BASE_AUDIO = import.meta.env.VITE_SERVICE_BASE || 'https://api.matita.net/whisper'
 
 const endpointPost       = import.meta.env.VITE_ENDPOINT_POST       || '/conversion-start';
 const endpointStatus     = import.meta.env.VITE_ENDPOINT_STATUS     || '/conversion-status';
@@ -173,16 +174,15 @@ const apiConversionStatus     = `${WHISPER_BASE}${endpointStatus}`;
 const apiConversionOut        = `${WHISPER_BASE}${endpointOut}`;
 const apiConversionTranslated = `${WHISPER_BASE}${endpointTranslated}`;
 
-const apiAudioPost   = `${SERVICE_BASE}/audio-extraction-start`;
-const apiAudioStatus = `${SERVICE_BASE}/audio-extraction-status`; 
-const apiAudioGet    = `${SERVICE_BASE}/audio-extraction-out`;
+const apiAudioPost   = `${SERVICE_BASE_AUDIO}/audio-extraction-start`;
+const apiAudioStatus = `${SERVICE_BASE_AUDIO}/audio-extraction-status`; 
+const apiAudioGet    = `${SERVICE_BASE_AUDIO}/audio-extraction-out`;
 
 
 const tokenBearer = `Bearer ${WHISPER_TOKEN}`;
 const tokenAudio  = `Bearer ${AUDIO_EXTRACTION_TOKEN}`;
 
-const API_BASE = import.meta.env.VITE_API_BASE || 'https://api.matita.net/subtitles-admin'
-const apiAdmin = axios.create({ baseURL: API_BASE })
+const apiAdmin = axios.create({ baseURL: SERVICE_BASE })
 
 apiAdmin.interceptors.request.use((config) => {
   const token = localStorage.getItem('subtitles_token')
@@ -420,8 +420,7 @@ async function createProject() {
         headers: {
           'Authorization': tokenAudio,
           'Content-Type': 'multipart/form-data'
-        },
-        params
+        }
       });
       const audioId = conversionToAudio.data.id;
 
