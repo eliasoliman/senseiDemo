@@ -524,8 +524,15 @@ async function createProject() {
   
 
   if (isAzureMode.value) {
-    const { id, state } = responseData;
-    console.log(`[NewProject] Poll #${attempt} - state: "${state}" | id: ${id}`);
+    const { id, state, stage, progress} = responseData;
+    console.log(`[NewProject] Poll #${attempt} - state: "${state}" | id: ${id} | stage: "${stage}" | progress: ${progress ?? 'n/a'}`);
+
+    if (stage === 'transcribing') {
+      transcribingProgress.value = Math.trunc(progress || 0);
+    } else if (stage === 'translating') {
+      transcribingProgress.value = 100;
+      translatingProgress.value = Math.trunc(progress || 0);
+    }
 
     if (state === 'ready') {
       transcribingProgress.value = 100;
