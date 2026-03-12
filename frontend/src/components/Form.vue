@@ -161,6 +161,8 @@ const WHISPER_BASE = import.meta.env.VITE_WHISPER_BASE;
 const WHISPER_TOKEN = import.meta.env.VITE_WHISPER_TOKEN || '';
 const AUDIO_EXTRACTION_TOKEN = import.meta.env.VITE_AUDIO_EXTRACTION_TOKEN || '';
 
+const SERVICE_BASE = import.meta.env.VITE_API_BASE;
+
 const endpointPost       = import.meta.env.VITE_ENDPOINT_POST       || '/conversion-start';
 const endpointStatus     = import.meta.env.VITE_ENDPOINT_STATUS     || '/conversion-status';
 const endpointOut        = import.meta.env.VITE_ENDPOINT_OUT        || '/conversion-out';
@@ -171,9 +173,10 @@ const apiConversionStatus     = `${WHISPER_BASE}${endpointStatus}`;
 const apiConversionOut        = `${WHISPER_BASE}${endpointOut}`;
 const apiConversionTranslated = `${WHISPER_BASE}${endpointTranslated}`;
 
-const apiAudioPost   = import.meta.env.VITE_API_AUDIO_START_BASE || 'https://api.matita.net/whisper/audio-extraction-start'
-const apiAudioStatus = import.meta.env.VITE_API_AUDIO_STATUS_BASE || 'https://api.matita.net/whisper/audio-extraction-status'
-const apiAudioGet    = import.meta.env.VITE_API_AUDIO_OUT_BASE || 'https://api.matita.net/whisper/audio-extraction-out'
+const apiAudioPost   = `${SERVICE_BASE}/audio-extraction-start`;
+const apiAudioStatus = `${SERVICE_BASE}/audio-extraction-status`; 
+const apiAudioGet    = `${SERVICE_BASE}/audio-extraction-out`;
+
 
 const tokenBearer = `Bearer ${WHISPER_TOKEN}`;
 const tokenAudio  = `Bearer ${AUDIO_EXTRACTION_TOKEN}`;
