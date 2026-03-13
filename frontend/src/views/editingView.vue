@@ -620,6 +620,13 @@ watch(videoPlayer, (newPlayer) => { if (newPlayer) setupVideoSync() })
       </div>
 
       <nav class="nav">
+        <button class="btn-undo" @click="undo" :disabled="isSaving">
+          <svg  xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-arrow-return-left" viewBox="0 0 16 16">
+              <path fill-rule="evenodd" d="M14.5 1.5a.5.5 0 0 1 .5.5v4.8a2.5 2.5 0 0 1-2.5 2.5H2.707l3.347 3.346a.5.5 0 0 1-.708.708l-4.2-4.2a.5.5 0 0 1 0-.708l4-4a.5.5 0 1 1 .708.708L2.707 8.3H12.5A1.5 1.5 0 0 0 14 6.8V2a.5.5 0 0 1 .5-.5"/>
+          </svg>
+          Undo
+        </button>
+        
         <button class="btn-save" @click="handleSave" :disabled="isSaving">
           <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" fill="currentColor" viewBox="0 0 16 16">
             <path d="M2 1a1 1 0 0 0-1 1v12a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V2a1 1 0 0 0-1-1H9.5a1 1 0 0 0-1 1v7.293l2.646-2.647a.5.5 0 0 1 .708.708l-3.5 3.5a.5.5 0 0 1-.708 0l-3.5-3.5a.5.5 0 1 1 .708-.708L7.5 9.293V2a2 2 0 0 1 2-2H14a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2V2a2 2 0 0 1 2-2h2.5a.5.5 0 0 1 0 1z"/>
@@ -759,9 +766,6 @@ watch(videoPlayer, (newPlayer) => { if (newPlayer) setupVideoSync() })
             </svg>
             <svg @click="zoomIn" xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="currentColor" class="bi bi-zoom-in" viewBox="0 0 16 16">
               <path fill-rule="evenodd" d="M6.5 12a5.5 5.5 0 1 0 0-11 5.5 5.5 0 0 0 0 11M13 6.5a6.5 6.5 0 1 1-13 0 6.5 6.5 0 0 1 13 0"/><path d="M10.344 11.742q.044.06.098.115l3.85 3.85a1 1 0 0 0 1.415-1.414l-3.85-3.85a1 1 0 0 0-.115-.1 6.5 6.5 0 0 1-1.398 1.4z"/><path fill-rule="evenodd" d="M6.5 3a.5.5 0 0 1 .5.5V6h2.5a.5.5 0 0 1 0 1H7v2.5a.5.5 0 0 1-1 0V7H3.5a.5.5 0 0 1 0-1H6V3.5a.5.5 0 0 1 .5-.5"/>
-            </svg>
-            <svg @click="undo" xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-arrow-return-left" viewBox="0 0 16 16">
-              <path fill-rule="evenodd" d="M14.5 1.5a.5.5 0 0 1 .5.5v4.8a2.5 2.5 0 0 1-2.5 2.5H2.707l3.347 3.346a.5.5 0 0 1-.708.708l-4.2-4.2a.5.5 0 0 1 0-.708l4-4a.5.5 0 1 1 .708.708L2.707 8.3H12.5A1.5 1.5 0 0 0 14 6.8V2a.5.5 0 0 1 .5-.5"/>
             </svg>
           </div>
           <div class="track">
@@ -1040,4 +1044,11 @@ textarea.form-control { resize: vertical; min-height: 100px; }
   font-weight: 700; font-size: 0.9rem; cursor: pointer; transition: all 0.2s ease; letter-spacing: 0.03em;
 }
 .btn-back:hover { border-color: #4a5568; color: #e2e8f0; }
+
+.btn-undo {
+  display: flex; align-items: center; gap: 6px; padding: 6px 18px;
+  background: transparent; color: #d88a0d; border: 1px solid #d88a0d; border-radius: 5px;
+  font-weight: 700; font-size: 0.9rem; cursor: pointer; transition: all 0.2s ease; letter-spacing: 0.03em;
+}
+.btn-undo:hover { border-color: #d9a34d; color: #c7a979; }
 </style>
