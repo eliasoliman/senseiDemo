@@ -159,7 +159,6 @@ const sourceLanguage = ref(isAzureMode.value ? "" : "auto")
 
 const WHISPER_BASE = import.meta.env.VITE_WHISPER_BASE;
 const WHISPER_TOKEN = import.meta.env.VITE_WHISPER_TOKEN || '';
-const AUDIO_EXTRACTION_TOKEN = import.meta.env.VITE_AUDIO_EXTRACTION_TOKEN || '';
 
 const SERVICE_BASE = import.meta.env.VITE_SERVICE_BASE || 'https://api.matita.net/subtitles-admin'
 const SERVICE_BASE_AUDIO = import.meta.env.VITE_SERVICE_BASE || 'https://api.matita.net/whisper'
@@ -180,7 +179,6 @@ const apiAudioGet    = `${WHISPER_BASE}/audio-extraction-out`;
 
 
 const tokenBearer = `Bearer ${WHISPER_TOKEN}`;
-const tokenAudio  = `Bearer ${AUDIO_EXTRACTION_TOKEN}`;
 
 const apiAdmin = axios.create({ baseURL: SERVICE_BASE })
 
@@ -418,7 +416,6 @@ async function createProject() {
 
       const conversionToAudio = await axios.post(apiAudioPost, audioFormData, {
         headers: {
-          'Authorization': tokenAudio,
           'Content-Type': 'multipart/form-data'
         }
       });
@@ -430,9 +427,7 @@ async function createProject() {
       let lastTokenRefreshAudio = Date.now();
 
       for (let attempt = 1; attempt <= maxAttemptsAudio; attempt++) {
-        const statusResponseAudio = await axios.get(`${apiAudioStatus}?id=${audioId}`, {
-          headers: { 'Authorization': tokenAudio }
-        });
+        const statusResponseAudio = await axios.get(`${apiAudioStatus}?id=${audioId}`)
 
         if (Date.now() - lastTokenRefreshAudio > 10 * 60 * 1000) {
           try {
@@ -466,7 +461,6 @@ async function createProject() {
       }
 
       audiofile = await axios.get(`${apiAudioGet}?id=${audioId}`, {
-        headers: { 'Authorization': tokenAudio },
         responseType: 'blob'
       });
 

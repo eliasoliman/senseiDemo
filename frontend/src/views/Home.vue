@@ -23,7 +23,7 @@ onMounted(async () => {
 
   try {
     // Chiamata GET all'endpoint richiesto
-    const response = await axios.get('https://api.matita.net/subtitles-admin/me', {
+    const response = await axios.get('http://52.151.194.129:8000/me', {
       headers: {
         Authorization: `Bearer ${token}`
       }

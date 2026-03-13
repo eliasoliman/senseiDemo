@@ -6,7 +6,7 @@ import Form from '../components/Form.vue';
 
 const router = useRouter();
 
-const API_BASE = 'https://api.matita.net/subtitles-admin';
+const API_BASE = 'http://52.151.194.129:8000';
 
 // ─── Token helpers ────────────────────────────────────────────────────────────
 
