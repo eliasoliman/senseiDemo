@@ -259,7 +259,7 @@ const parseSrtToArray = (srtString) => {
     if (righe.length >= 3) {
       return {
         timestamp: righe[1],
-        testo: righe.slice(2).join(' ')
+        testo: righe.slice(2).join('\n')
       };
     }
     return null;

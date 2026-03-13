@@ -499,7 +499,9 @@ const handleKeydown = (e) => {
   if ((e.ctrlKey || e.metaKey) && e.key === 'z') { e.preventDefault(); undo() }
 }
 
-const arrayToSrt = (arr) => arr.map((sub, i) => `${i + 1}\n${sub.timestamp}\n${sub.testo}`).join('\n\n')
+const arrayToSrt = (arr) => arr.map((sub, i) => 
+  `${i + 1}\n${sub.timestamp}\n${sub.testo}`
+).join('\n\n')
 
 const apiFetch = async (url, options = {}) => {
   const token = localStorage.getItem('subtitles_token')
