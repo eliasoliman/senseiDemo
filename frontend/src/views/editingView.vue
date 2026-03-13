@@ -1013,8 +1013,7 @@ h3 { color: rgba(31, 125, 240, 0.918); }
 
 .timestamp { display: block; font-weight: bold; color: rgba(31, 125, 240, 0.918); font-size: 0.85rem; margin-bottom: 4px; margin-left: 5px; flex-shrink: 0; }
 .subtitle-block-active .timestamp { color: #00cc99; }
-.testo { margin: 0 0 6px 5px; color: #fff; line-height: 1.4; font-size: 0.9rem; word-break: break-word; }
-
+.testo { margin: 0 0 6px 5px; color: #fff; line-height: 1.4; font-size: 0.9rem; word-break: break-word; white-space: pre-line; }
 .block-actions { display: flex; justify-content: flex-end; gap: 6px; flex-shrink: 0; margin-top: 2px; }
 .btn-delete, .btn-edit { padding: 3px 10px; border: none; border-radius: 4px; font-size: 0.72rem; font-weight: 600; cursor: pointer; transition: all 0.2s ease; line-height: 1.5; }
 .btn-delete { background: rgba(180, 40, 40, 0.65); color: #ffd5d5; }
@@ -1041,8 +1040,7 @@ h3 { color: rgba(31, 125, 240, 0.918); }
 .video-box video { width: 100%; height: 100%; max-width: 100%; max-height: 100%; display: block; object-fit: contain; }
 
 .subtitle-overlay { position: absolute; bottom: 35px; left: 50%; transform: translateX(-50%); max-width: 80%; text-align: center; pointer-events: none; z-index: 10; }
-.subtitle-text { display: inline-block; background: rgba(0, 0, 0, 0.8); color: #fff; padding: 8px 16px; border-radius: 4px; font-size: 0.9rem; line-height: 1.4; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.5); backdrop-filter: blur(4px); }
-
+.subtitle-text { display: inline-block; background: rgba(0, 0, 0, 0.8); color: #fff; padding: 8px 16px; border-radius: 4px; font-size: 0.9rem; line-height: 1.4; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.5); backdrop-filter: blur(4px); white-space: pre-line; }
 .timeline { background-color: #171819; overflow-x: auto; overflow-y: hidden; z-index: 1; }
 .zoomIcons { cursor: pointer; }
 
