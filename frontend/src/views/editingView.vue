@@ -28,6 +28,8 @@ const subtitlesScroll = ref(null)
 const selectedSubtitleIndex = ref(-1)
 const isPlayingSelectedSubtitle = ref(false)
 
+const SERVICE_BASE = import.meta.env.VITE_SERVICE_BASE || 'https://api.matita.net/subtitles-admin'
+
 // ─── Track availability ───────────────────────────────────────────────────────
 const hasOriginal = computed(() => subtitles.value.length > 0)
 const hasTranslation = computed(() => tranSubtitles.value.length > 0)
@@ -483,7 +485,7 @@ const handleSave = async () => {
     let currentData = {};
     try { let d = currentProject.value.data; while (typeof d === 'string') { d = JSON.parse(d); } currentData = d; } catch (e) { currentData = {}; }
     const res = await apiFetch(
-      `http://52.151.194.129:8000/projects/${currentProject.value.id}`,
+      `${SERVICE_BASE}/projects/${currentProject.value.id}`,
       { method: 'PATCH', body: JSON.stringify({ name: currentProject.value.name, data: JSON.stringify({ ...currentData, srt1, srt2, playhead: currentTime.value, last_saved: new Date().toISOString() }) }) }
     );
     if (!res) return;

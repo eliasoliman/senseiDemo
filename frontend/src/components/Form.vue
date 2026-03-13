@@ -161,7 +161,6 @@ const WHISPER_BASE = import.meta.env.VITE_WHISPER_BASE;
 const WHISPER_TOKEN = import.meta.env.VITE_WHISPER_TOKEN || '';
 
 const SERVICE_BASE = import.meta.env.VITE_SERVICE_BASE || 'https://api.matita.net/subtitles-admin'
-const SERVICE_BASE_AUDIO = import.meta.env.VITE_SERVICE_BASE || 'https://api.matita.net/whisper'
 
 const endpointPost       = import.meta.env.VITE_ENDPOINT_POST       || '/conversion-start';
 const endpointStatus     = import.meta.env.VITE_ENDPOINT_STATUS     || '/conversion-status';

@@ -4,7 +4,9 @@ import axios from 'axios';
 import { useRouter } from 'vue-router';
 
 const router = useRouter();
-const apiLogin = 'http://52.151.194.129:8000/login';
+
+const SERVICE_BASE = import.meta.env.VITE_SERVICE_BASE || 'https://api.matita.net/subtitles-admin'
+const apiLogin = `${SERVICE_BASE}/login`;
 
 const username = ref('');
 const password = ref('');
