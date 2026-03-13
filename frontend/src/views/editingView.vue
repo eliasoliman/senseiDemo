@@ -26,6 +26,45 @@ const videoDuration = ref(0)
 const pixelsPerSecond = ref(80)
 const subtitlesScroll = ref(null)
 const selectedSubtitleIndex = ref(-1)
+
+// ─── Resizable panels ────────────────────────────────────────────────────────
+const timelineHeightPct = ref(35)   // % altezza container
+const sidebarWidthPct = ref(40)     // % larghezza content
+
+const startResizeTimeline = (e) => {
+  e.preventDefault()
+  const container = document.querySelector('.container')
+  const startY = e.clientY
+  const startPct = timelineHeightPct.value
+  const onMove = (ev) => {
+    const delta = ((startY - ev.clientY) / container.clientHeight) * 100
+    timelineHeightPct.value = Math.min(70, Math.max(15, startPct + delta))
+  }
+  const onUp = () => {
+    window.removeEventListener('mousemove', onMove)
+    window.removeEventListener('mouseup', onUp)
+  }
+  window.addEventListener('mousemove', onMove)
+  window.addEventListener('mouseup', onUp)
+}
+
+const startResizeSidebar = (e) => {
+  e.preventDefault()
+  const content = document.querySelector('.content')
+  const startX = e.clientX
+  const startPct = sidebarWidthPct.value
+  const onMove = (ev) => {
+    const delta = ((ev.clientX - startX) / content.clientWidth) * 100
+    sidebarWidthPct.value = Math.min(65, Math.max(20, startPct + delta))
+  }
+  const onUp = () => {
+    window.removeEventListener('mousemove', onMove)
+    window.removeEventListener('mouseup', onUp)
+  }
+  window.addEventListener('mousemove', onMove)
+  window.addEventListener('mouseup', onUp)
+}
+
 const isPlayingSelectedSubtitle = ref(false)
 
 const SERVICE_BASE = import.meta.env.VITE_SERVICE_BASE || 'https://api.matita.net/subtitles-admin'
@@ -651,8 +690,8 @@ watch(videoPlayer, (newPlayer) => { if (newPlayer) setupVideoSync() })
       </nav>
     </header>
 
-    <div class="container">
-      <div class="content">
+    <div class="container" :style="`grid-template-rows: calc(${100 - timelineHeightPct}% - 3px) 6px ${timelineHeightPct}%`">
+      <div class="content" :style="`grid-template-columns: ${sidebarWidthPct}% ${100 - sidebarWidthPct}%`">
         <div class="sidebar">
 
           <!-- Track switcher: shown only if BOTH tracks exist -->
@@ -742,6 +781,8 @@ watch(videoPlayer, (newPlayer) => { if (newPlayer) setupVideoSync() })
           </div>
         </div>
 
+        <div class="resize-handle-v" @mousedown="startResizeSidebar"></div>
+
         <div class="video-area">
           <div class="video-box">
             <video ref="videoPlayer" v-if="videoUrl" :src="videoUrl" controls></video>
@@ -757,6 +798,8 @@ watch(videoPlayer, (newPlayer) => { if (newPlayer) setupVideoSync() })
           </div>
         </div>
       </div>
+
+      <div class="resize-handle-h" @mousedown="startResizeTimeline"></div>
 
       <div class="timeline">
         <div class="time-row">
@@ -890,13 +933,18 @@ h3 { color: rgba(31, 125, 240, 0.918); }
 
 .container {
   grid-area: container; display: grid; grid-template-rows: 65% 35%;
-  min-width: 100%; height: calc(100vh); overflow: hidden; gap: 0;
+  min-width: 100%; height: calc(100vh);; overflow: hidden; gap: 0;
 }
 .content {
-  display: grid; grid-template-columns: 40% 60%; width: 100%;
-  overflow: hidden; height: 100%; align-items: stretch; max-height: 100%;
+  display: flex;          
+  width: 100%;
+  overflow: hidden;
+  height: 100%;
+  align-items: stretch;
+  max-height: 100%;
 }
-.sidebar { background-color: rgb(40, 40, 40); display: flex; flex-direction: column; overflow: hidden; height: 100%; }
+
+.sidebar { flex: 0 0 v-bind(sidebarWidthPct + '%'); background-color: rgb(40, 40, 40); display: flex; flex-direction: column; overflow: hidden; height: 100%; }
 
 /* Track switcher (shown when both tracks exist) */
 .track-switcher {
@@ -988,7 +1036,7 @@ h3 { color: rgba(31, 125, 240, 0.918); }
 .btn-merge { background: rgba(0, 204, 153, 0.2); color: #00cc99; border: 1px solid rgba(0, 204, 153, 0.55); }
 .btn-merge:hover { background: rgba(0, 204, 153, 0.8); color: #fff; box-shadow: 0 2px 6px rgba(0, 204, 153, 0.4); }
 
-.video-area { background-color: rgb(33, 32, 32); display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; overflow: hidden; }
+.video-area { flex: 1;background-color: rgb(33, 32, 32); display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; overflow: hidden; }
 .video-box { width: 90%; height: 90%; max-height: 90%; position: relative; display: flex; align-items: center; justify-content: center; overflow: hidden; }
 .video-box video { width: 100%; height: 100%; max-width: 100%; max-height: 100%; display: block; object-fit: contain; }
 
@@ -1051,4 +1099,64 @@ textarea.form-control { resize: vertical; min-height: 100px; }
   font-weight: 700; font-size: 0.9rem; cursor: pointer; transition: all 0.2s ease; letter-spacing: 0.03em;
 }
 .btn-undo:hover { border-color: #d9a34d; color: #c7a979; }
+
+.resize-handle-h {
+  height: 6px;
+  cursor: ns-resize;
+  background: transparent;
+  position: relative;
+  z-index: 10;
+  flex-shrink: 0;
+  transition: background 0.15s;
+}
+.resize-handle-h::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: 40px;
+  height: 3px;
+  border-radius: 2px;
+  background: rgba(255,255,255,0.15);
+  transition: background 0.15s;
+}
+.resize-handle-h:hover,
+.resize-handle-h:active {
+  background: rgba(31, 125, 240, 0.15);
+}
+.resize-handle-h:hover::after,
+.resize-handle-h:active::after {
+  background: rgba(31, 125, 240, 0.8);
+}
+
+.resize-handle-v {
+  width: 6px;
+  cursor: ew-resize;
+  background: transparent;
+  position: relative;
+  z-index: 10;
+  flex-shrink: 0;
+  transition: background 0.15s;
+}
+.resize-handle-v::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 3px;
+  height: 40px;
+  border-radius: 2px;
+  background: rgba(255,255,255,0.15);
+  transition: background 0.15s;
+}
+.resize-handle-v:hover,
+.resize-handle-v:active {
+  background: rgba(31, 125, 240, 0.15);
+}
+.resize-handle-v:hover::after,
+.resize-handle-v:active::after {
+  background: rgba(31, 125, 240, 0.8);
+}
 </style>
