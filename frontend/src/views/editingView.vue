@@ -483,7 +483,7 @@ const handleSave = async () => {
     let currentData = {};
     try { let d = currentProject.value.data; while (typeof d === 'string') { d = JSON.parse(d); } currentData = d; } catch (e) { currentData = {}; }
     const res = await apiFetch(
-      `https://api.matita.net/subtitles-admin/projects/${currentProject.value.id}`,
+      `http://52.151.194.129:8000/projects/${currentProject.value.id}`,
       { method: 'PATCH', body: JSON.stringify({ name: currentProject.value.name, data: JSON.stringify({ ...currentData, srt1, srt2, playhead: currentTime.value, last_saved: new Date().toISOString() }) }) }
     );
     if (!res) return;
