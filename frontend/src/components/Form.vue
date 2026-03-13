@@ -174,9 +174,9 @@ const apiConversionStatus     = `${WHISPER_BASE}${endpointStatus}`;
 const apiConversionOut        = `${WHISPER_BASE}${endpointOut}`;
 const apiConversionTranslated = `${WHISPER_BASE}${endpointTranslated}`;
 
-const apiAudioPost   = `${SERVICE_BASE_AUDIO}/audio-extraction-start`;
-const apiAudioStatus = `${SERVICE_BASE_AUDIO}/audio-extraction-status`; 
-const apiAudioGet    = `${SERVICE_BASE_AUDIO}/audio-extraction-out`;
+const apiAudioPost   = `${WHISPER_BASE}/audio-extraction-start`;
+const apiAudioStatus = `${WHISPER_BASE}/audio-extraction-status`; 
+const apiAudioGet    = `${WHISPER_BASE}/audio-extraction-out`;
 
 
 const tokenBearer = `Bearer ${WHISPER_TOKEN}`;
@@ -444,16 +444,16 @@ async function createProject() {
           }
         }
 
-        const { status, error, stage, progress } = statusResponseAudio.data;
-        console.log(`[NewProject] Audio Poll #${attempt} - status: "${status}" | stage: "${stage}" | progress: ${progress ?? 'n/a'}`);
+        const { state, error, stage, progress } = statusResponseAudio.data;
+        console.log(`[NewProject] Audio Poll #${attempt} - status: "${state}" | stage: "${stage}" | progress: ${progress ?? 'n/a'}`);
 
-        if (status === 'completed') {
+        if (state === 'completed') {
           conversionCompletedAudio = true;
           console.log('[NewProject] Conversione Audio completata!');
           break;
         }
 
-        if (status === 'failed' || status === 'error') {
+        if (state === 'failed' || status === 'error') {
           console.error('[NewProject] Conversione Audio fallita. Errore server:', error);
           throw new Error(error || 'Conversione audio fallita');
         }
