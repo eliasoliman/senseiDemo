@@ -306,13 +306,8 @@ const activeSubtitleText = computed(() => {
   for (let i = 0; i < arr.length; i++) {
     const sub = arr[i]
     const start = parseSrtTimestamp(sub.timestamp)
-    let duration = 2
-    if (sub.timestamp.includes('-->')) {
-      const parts = sub.timestamp.split('-->')
-      const end = parseSrtTimestamp(parts[1].trim())
-      duration = end - start
-    }
-    if (currentTime.value >= start && currentTime.value <= start + duration) return sub.testo || ''
+    const end = parseSrtTimestampEnd(sub.timestamp)
+    if (currentTime.value >= start && currentTime.value < end) return sub.testo || ''
   }
   return ''
 })
@@ -425,6 +420,20 @@ const handleSubtitleSelect = (index) => {
 
 provide('onSubtitleSelect', handleSubtitleSelect)
 
+const handleNativeFullscreen = () => {
+  if (
+    document.fullscreenElement === videoPlayer.value ||
+    document.webkitFullscreenElement === videoPlayer.value
+  ) {
+    const exitFs = document.exitFullscreen || document.webkitExitFullscreen
+    exitFs.call(document).then(() => {
+      toggleFullscreen()
+    }).catch(() => {
+      toggleFullscreen()
+    })
+  }
+}
+
 const setupVideoSync = () => {
   if (videoPlayer.value) {
     videoPlayer.value.onloadedmetadata = () => { videoDuration.value = videoPlayer.value.duration }
@@ -434,6 +443,9 @@ const setupVideoSync = () => {
       if (selectedSubtitleIndex.value >= 0 && !isPlayingSelectedSubtitle.value) isPlayingSelectedSubtitle.value = true
     }
     videoPlayer.value.onpause = () => { isPlaying.value = false }
+
+    videoPlayer.value.onfullscreenchange = handleNativeFullscreen
+    videoPlayer.value.onwebkitfullscreenchange = handleNativeFullscreen
   }
 }
 
@@ -627,10 +639,26 @@ onUnmounted(() => {
   window.removeEventListener('keydown', handleKeydown)
 })
 
-const restartVideo = () => { if (videoPlayer.value) { videoPlayer.value.currentTime = 0; videoPlayer.value.play() } }
+const restartVideo = () => { if (videoPlayer.value) { videoPlayer.value.currentTime = 0; videoPlayer.value.pause() } }
 const togglePlay = () => { if (videoPlayer.value) { videoPlayer.value.paused ? videoPlayer.value.play() : videoPlayer.value.pause() } }
+const endVideo = () => { if (videoPlayer.value) { videoPlayer.value.currentTime = videoPlayer.value.duration; videoPlayer.value.pause();}};
 const zoomOut = () => { zoomLevel.value = Math.max(0.5, zoomLevel.value - 0.25); pixelsPerSecond.value = 80 * zoomLevel.value; waveformKey.value++ }
 const zoomIn = () => { zoomLevel.value = Math.min(5, zoomLevel.value + 0.25); pixelsPerSecond.value = 80 * zoomLevel.value; waveformKey.value++ }
+
+const toggleFullscreen = () => {
+  if (!videoPlayer.value) return
+
+  if (!document.fullscreenElement) {
+    const videoBox = videoPlayer.value.closest('.video-box')
+    if (videoBox) {
+      videoBox.requestFullscreen()
+    } else {
+      videoPlayer.value.requestFullscreen()
+    }
+  } else {
+    document.exitFullscreen()
+  }
+}
 
 watch(videoPlayer, (newPlayer) => { if (newPlayer) setupVideoSync() })
 </script>
@@ -787,7 +815,7 @@ watch(videoPlayer, (newPlayer) => { if (newPlayer) setupVideoSync() })
 
         <div class="video-area">
           <div class="video-box">
-            <video ref="videoPlayer" v-if="videoUrl" :src="videoUrl" controls></video>
+            <video ref="videoPlayer" v-if="videoUrl" :src="videoUrl" controls controlslist="nofullscreen"></video>
             <div v-if="activeSubtitleText" class="subtitle-overlay">
               <span class="subtitle-text">{{ activeSubtitleText }}</span>
             </div>
@@ -797,6 +825,11 @@ watch(videoPlayer, (newPlayer) => { if (newPlayer) setupVideoSync() })
             <svg @click="togglePlay" v-if="!isPlaying" xmlns="http://www.w3.org/2000/svg" width="30" height="30" fill="currentColor" class="bi bi-play-fill" viewBox="0 0 16 16"><path d="m11.596 8.697-6.363 3.692c-.54.313-1.233-.066-1.233-.697V4.308c0-.63.692-1.01 1.233-.696l6.363 3.692a.802.802 0 0 1 0 1.393"/></svg>
             <svg @click="togglePlay" v-else xmlns="http://www.w3.org/2000/svg" width="30" height="30" fill="currentColor" class="bi bi-pause-fill" viewBox="0 0 16 16"><path d="M5.5 3.5A1.5 1.5 0 0 1 7 5v6a1.5 1.5 0 0 1-3 0V5a1.5 1.5 0 0 1 1.5-1.5m5 0A1.5 1.5 0 0 1 12 5v6a1.5 1.5 0 0 1-3 0V5a1.5 1.5 0 0 1 1.5-1.5"/></svg>
             <svg @click="endVideo" xmlns="http://www.w3.org/2000/svg" width="25" height="25" fill="currentColor" class="bi bi-skip-end-fill" viewBox="0 0 16 16"><path d="M12.5 4a.5.5 0 0 0-1 0v3.248L5.233 3.612C4.693 3.3 4 3.678 4 4.308v7.384c0 .63.692 1.01 1.233.697L11.5 8.753V12a.5.5 0 0 0 1 0z"/></svg>
+            <span class="fullscreenSVG">
+              <svg @click="toggleFullscreen"  xmlns="http://www.w3.org/2000/svg" width="18" height="18" fill="currentColor" class="bi bi-arrows-fullscreen" viewBox="0 0 16 16">
+              <path fill-rule="evenodd" d="M5.828 10.172a.5.5 0 0 0-.707 0l-4.096 4.096V11.5a.5.5 0 0 0-1 0v3.975a.5.5 0 0 0 .5.5H4.5a.5.5 0 0 0 0-1H1.732l4.096-4.096a.5.5 0 0 0 0-.707m4.344 0a.5.5 0 0 1 .707 0l4.096 4.096V11.5a.5.5 1 1 1 1 0v3.975a.5.5 0 0 1-.5.5H11.5a.5.5 0 0 1 0-1h2.768l-4.096-4.096a.5.5 0 0 1 0-.707m0-4.344a.5.5 0 0 0 .707 0l4.096-4.096V4.5a.5.5 1 0 0 1 0V.525a.5.5 0 0 0-.5-.5H11.5a.5.5 0 0 0 0 1h2.768l-4.096 4.096a.5.5 0 0 0 0 .707m-4.344 0a.5.5 0 0 1-.707 0L1.025 1.732V4.5a.5.5 0 0 1-1 0V.525a.5.5 0 0 1 .5-.5H4.5a.5.5 0 0 1 0 1H1.732l4.096 4.096a.5.5 0 0 1 0 .707"/>
+              </svg>
+            </span> 
           </div>
         </div>
       </div>
@@ -1040,11 +1073,43 @@ h3 { color: rgba(31, 125, 240, 0.918); }
 .video-area { flex: 1;background-color: rgb(33, 32, 32); display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; overflow: hidden; }
 .video-box { width: 90%; height: 90%; max-height: 90%; position: relative; display: flex; align-items: center; justify-content: center; overflow: hidden; }
 .video-box video { width: 100%; height: 100%; max-width: 100%; max-height: 100%; display: block; object-fit: contain; }
+/* Fullscreen: the video-box becomes the fullscreen root */
+.video-box:fullscreen {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #000;
+  width: 100vw;
+  height: 100vh;
+}
 
+.video-box:fullscreen video {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.video-box:fullscreen .subtitle-overlay {
+  position: fixed;
+  bottom: 48px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 2147483647;
+  pointer-events: none;
+}
+
+.video-box:fullscreen .subtitle-text {
+  font-size: 1.4rem;
+  padding: 10px 24px;
+}
 .subtitle-overlay { position: absolute; bottom: 35px; left: 50%; transform: translateX(-50%); max-width: 80%; text-align: center; pointer-events: none; z-index: 10; }
 .subtitle-text { display: inline-block; background: rgba(0, 0, 0, 0.8); color: #fff; padding: 8px 16px; border-radius: 4px; font-size: 0.9rem; line-height: 1.4; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.5); backdrop-filter: blur(4px); white-space: pre-line; }
 .timeline { background-color: #171819; overflow-x: auto; overflow-y: hidden; z-index: 1; }
 .zoomIcons { cursor: pointer; }
+.fullscreenSVG{
+  position: absolute;
+  right: 60px;
+}
 
 .modal-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0, 0, 0, 0.8); display: flex; align-items: center; justify-content: center; z-index: 1000; backdrop-filter: blur(4px); }
 .modal-content { background: #2a2d31; border-radius: 8px; width: 90%; max-width: 600px; box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5); }

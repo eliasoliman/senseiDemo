@@ -25,6 +25,9 @@ const isPlaying = ref(false)
 const videoSrc = ref('')
 const waveformKey = ref(0)
 const isDragging = ref(false)
+const playheadDragStartX = ref(0)
+const isPlayheadActuallyDragging = ref(false)
+const PLAYHEAD_DRAG_THRESHOLD = 5
 const draggingSubtitle = ref(null)
 const resizingSubtitle = ref(null)
 const resizeEdge = ref(null) 
@@ -286,6 +289,8 @@ const handleSubtitleMouseDown = (event, sub, edge = null, type = null) => {
 const handlePlayheadMouseDown = (event) => {
   event.preventDefault()
   isDragging.value = true
+  playheadDragStartX.value = event.clientX
+  isPlayheadActuallyDragging.value = false
   document.body.style.cursor = 'grabbing'
   document.body.style.userSelect = 'none'
 }
@@ -293,11 +298,31 @@ const handlePlayheadMouseDown = (event) => {
 const handleMouseMove = (event) => {
   if (isDragging.value && !draggingSubtitle.value && !resizingSubtitle.value) {
     if (!props.videoRef || !timelineWrapper.value) return
+
+    if (!isPlayheadActuallyDragging.value) {
+    if (Math.abs(event.clientX - playheadDragStartX.value) < PLAYHEAD_DRAG_THRESHOLD) return
+    isPlayheadActuallyDragging.value = true
+  }
+
     const videoElement = props.videoRef.value || props.videoRef
     const rect = timelineWrapper.value.getBoundingClientRect()
     const clickX = event.clientX - rect.left + timelineWrapper.value.scrollLeft
     const newTime = Math.max(0, Math.min(clickX / props.pixelsPerSecond, props.duration))
     videoElement.currentTime = newTime
+
+     const container = timelineWrapper.value
+      const containerWidth = container.clientWidth
+      const playheadPosition = newTime * props.pixelsPerSecond
+      const visibleStart = container.scrollLeft
+      const visibleEnd = visibleStart + containerWidth
+      const margin = containerWidth * 0.2
+      if (playheadPosition < visibleStart || playheadPosition > visibleEnd) {
+        container.scrollTo({
+          left: Math.max(0, playheadPosition - containerWidth * 0.5),
+          behavior: 'instant'
+        })
+      }
+
     return
   }
 
@@ -389,6 +414,7 @@ const handleMouseMove = (event) => {
 const handleMouseUp = () => {
   if (isDragging.value || draggingSubtitle.value || resizingSubtitle.value) {
     isDragging.value = false
+    isPlayheadActuallyDragging.value = false
     draggingSubtitle.value = null
     resizingSubtitle.value = null
     resizeEdge.value = null
@@ -418,6 +444,8 @@ onMounted(() => {
     rafId = requestAnimationFrame(loop)
 
     videoElement.addEventListener('seeked', () => {
+      if (isDragging.value) return
+
       if (timelineWrapper.value) {
         const container = timelineWrapper.value
         const containerWidth = container.clientWidth
