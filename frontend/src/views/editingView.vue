@@ -815,7 +815,7 @@ watch(videoPlayer, (newPlayer) => { if (newPlayer) setupVideoSync() })
 
         <div class="video-area">
           <div class="video-box">
-            <video ref="videoPlayer" v-if="videoUrl" :src="videoUrl" controls controlslist="nofullscreen"></video>
+            <video ref="videoPlayer" v-if="videoUrl" :src="videoUrl" controls controlslist="nofullscreen nodownload" disablepictureinpicture></video>
             <div v-if="activeSubtitleText" class="subtitle-overlay">
               <span class="subtitle-text">{{ activeSubtitleText }}</span>
             </div>
@@ -1223,5 +1223,12 @@ textarea.form-control { resize: vertical; min-height: 100px; }
 .resize-handle-v:hover::after,
 .resize-handle-v:active::after {
   background: rgba(31, 125, 240, 0.8);
+}
+
+:deep(video::-webkit-media-controls-fullscreen-button) {
+  display: none;
+}
+:deep(video::-webkit-media-controls-picture-in-picture-button) {
+  display: none;
 }
 </style>
