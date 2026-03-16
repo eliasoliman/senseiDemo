@@ -217,6 +217,8 @@ const stopRaf = () => {
   }
 }
 
+let scrollCooldown = false
+
 watch(currentTime, (newVal) => {
   if (!timelineWrapper.value || !isPlaying.value) return
   const container = timelineWrapper.value
@@ -227,11 +229,13 @@ watch(currentTime, (newVal) => {
   const visibleEnd = visibleStart + containerWidth
   const margin = containerWidth * 0.15
 
-  if (playheadPosition > visibleEnd - margin) {
+  if (playheadPosition > visibleEnd - margin && !scrollCooldown) {
+    scrollCooldown = true
     container.scrollTo({
       left: playheadPosition - margin,
-      behavior: 'instant'
+      behavior: 'smooth'
     })
+    setTimeout(() => { scrollCooldown = false }, 1000)
   }
 })
 
@@ -297,34 +301,30 @@ const handlePlayheadMouseDown = (event) => {
 
 const handleMouseMove = (event) => {
   if (isDragging.value && !draggingSubtitle.value && !resizingSubtitle.value) {
-    if (!props.videoRef || !timelineWrapper.value) return
+  if (!props.videoRef || !timelineWrapper.value) return
+  const videoElement = props.videoRef.value || props.videoRef
+  const rect = timelineWrapper.value.getBoundingClientRect()
+  const clickX = event.clientX - rect.left + timelineWrapper.value.scrollLeft
+  const newTime = Math.max(0, Math.min(clickX / props.pixelsPerSecond, props.duration))
+  videoElement.currentTime = newTime
 
-    if (!isPlayheadActuallyDragging.value) {
-    if (Math.abs(event.clientX - playheadDragStartX.value) < PLAYHEAD_DRAG_THRESHOLD) return
-    isPlayheadActuallyDragging.value = true
+  const container = timelineWrapper.value
+  const containerWidth = container.clientWidth
+  const playheadPosition = newTime * props.pixelsPerSecond
+  const visibleStart = container.scrollLeft
+  const visibleEnd = visibleStart + containerWidth
+
+  if ((playheadPosition < visibleStart || playheadPosition > visibleEnd) && !scrollCooldown) {
+    scrollCooldown = true
+    container.scrollTo({
+      left: Math.max(0, playheadPosition - containerWidth * 0.5),
+      behavior: 'smooth'
+    })
+    setTimeout(() => { scrollCooldown = false }, 1000) // ← puoi alzare a 1500ms
   }
 
-    const videoElement = props.videoRef.value || props.videoRef
-    const rect = timelineWrapper.value.getBoundingClientRect()
-    const clickX = event.clientX - rect.left + timelineWrapper.value.scrollLeft
-    const newTime = Math.max(0, Math.min(clickX / props.pixelsPerSecond, props.duration))
-    videoElement.currentTime = newTime
-
-     const container = timelineWrapper.value
-      const containerWidth = container.clientWidth
-      const playheadPosition = newTime * props.pixelsPerSecond
-      const visibleStart = container.scrollLeft
-      const visibleEnd = visibleStart + containerWidth
-      const margin = containerWidth * 0.2
-      if (playheadPosition < visibleStart || playheadPosition > visibleEnd) {
-        container.scrollTo({
-          left: Math.max(0, playheadPosition - containerWidth * 0.5),
-          behavior: 'instant'
-        })
-      }
-
-    return
-  }
+  return
+}
 
   const isTran = subtitleType.value === 'tran'
   const currentData = isTran ? processedTranSubtitles.value : processedSubtitles.value
