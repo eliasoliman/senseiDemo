@@ -326,6 +326,15 @@ const targetLanguage = computed(() => {
   return d.targetLanguage || ''
 })
 
+const DEFAULT_TIMELINE_PCT = 35 
+
+const waveformHeight = computed(() => {
+  if (timelineHeightPct.value <= DEFAULT_TIMELINE_PCT) return 60
+  const extraPct = timelineHeightPct.value - DEFAULT_TIMELINE_PCT
+  const extraPx = (window.innerHeight * extraPct / 100) * 0.8
+  return Math.min(180, Math.floor(60 + extraPx))
+})
+
 const isEditingName = ref(false)
 const editingName = ref('')
 
@@ -855,6 +864,7 @@ watch(videoPlayer, (newPlayer) => { if (newPlayer) setupVideoSync() })
               v-model:tranSubtitles="tranSubtitles"
               v-model:pixelsPerSecond="pixelsPerSecond"
               :activeTrack="activeSidebarTrack"
+              :waveformHeight="waveformHeight"
               @update:activeTrack="activeSidebarTrack = $event"
             />
           </div>

@@ -14,7 +14,11 @@ const props = defineProps({
   activeTrack: {
     type: String,
     default: null
-  }
+  },
+  waveformHeight: { 
+    type: Number, 
+    default: 60 
+  } 
 })
 
 const emit = defineEmits(['update:subtitles', 'update:tranSubtitles', 'update:activeTrack'])
@@ -45,17 +49,26 @@ const hasTranslation = computed(() => props.tranSubtitles && props.tranSubtitles
 // ─── Dynamic layout rows based on which tracks exist ─────────────────────────
 // Row heights: waveform=60px, orig=60px, tran=60px
 // top offsets for subtitle blocks depend on which tracks are visible
-const origTop = computed(() => '70px') // always below waveform
-const tranTop = computed(() => hasOriginal.value ? '130px' : '70px')
+const origTop = computed(() => `${props.waveformHeight + 10}px`)
+const tranTop = computed(() =>
+  hasOriginal.value
+    ? `${props.waveformHeight + 10 + TRACK_HEIGHT}px`
+    : `${props.waveformHeight + 10}px`
+)
+
 const trackAreaHeight = computed(() => {
-  if (hasOriginal.value && hasTranslation.value) return '200px'
-  if (hasOriginal.value || hasTranslation.value) return '140px'
-  return '80px'
+  const wh = props.waveformHeight + 10
+  if (hasOriginal.value && hasTranslation.value) return `${wh + TRACK_HEIGHT * 2}px`
+  if (hasOriginal.value || hasTranslation.value) return `${wh + TRACK_HEIGHT}px`
+  return `${wh}px`
 })
+const TRACK_HEIGHT = 50 
+
 const leftGridRows = computed(() => {
-  if (hasOriginal.value && hasTranslation.value) return '60px 60px 60px'
-  if (hasOriginal.value || hasTranslation.value) return '60px 60px'
-  return '60px'
+  const wh = props.waveformHeight
+  if (hasOriginal.value && hasTranslation.value) return `${wh}px ${TRACK_HEIGHT}px ${TRACK_HEIGHT}px`
+  if (hasOriginal.value || hasTranslation.value) return `${wh}px ${TRACK_HEIGHT}px`
+  return `${wh}px`
 })
 
 const activeSidebarTrack = ref(
@@ -269,6 +282,25 @@ const formatTime = (seconds) => {
   const s = Math.floor(seconds % 60)
   return `${m}:${s.toString().padStart(2, '0')}`
 }
+
+const debounce = (fn, delay) => {
+  let timer = null
+  return (...args) => {
+    clearTimeout(timer)
+    timer = setTimeout(() => fn(...args), delay)
+  }
+}
+
+
+const waveformKeyHeight = ref(props.waveformHeight)
+
+const updateWaveformKeyHeight = debounce((val) => {
+  waveformKeyHeight.value = val
+}, 600)
+
+watch(() => props.waveformHeight, (val) => {
+  updateWaveformKeyHeight(val)
+})
 
 const handleSubtitleMouseDown = (event, sub, edge = null, type = null) => {
   event.preventDefault()
@@ -549,16 +581,16 @@ onUnmounted(() => {
         <div 
           ref="waveformContainer" 
           class="waveform-track"
-          :style="{ width: waveformWidth + 'px' }"
+          :style="{ width: waveformWidth + 'px', height: waveformHeight + 'px' }"
         >
           <AVWaveform
             v-if="videoSrc"
-            :key="`${videoSrc}-${waveformKey}`" 
+            :key="`${videoSrc}-${waveformKey}-${waveformKeyHeight}`"
             :src="videoSrc"
             :canv-width="waveformWidth"
+            :canv-height="props.waveformHeight"
             :playtime="false"
             :playtime-line-width="0"
-            :canv-height="60"
             :line-width="3"
             :line-space="2"
             :line-color="'#60a5fa'"
@@ -651,10 +683,9 @@ onUnmounted(() => {
 }
 
 .left {
-  padding-top: 30px;
+  padding-top: 30px;  
   display: grid;
   align-items: center;
-  /* gridTemplateRows set dynamically via :style */
 }
 
 .waveform-label {
@@ -756,7 +787,6 @@ onUnmounted(() => {
   position: absolute;
   top: 0;
   left: 0;
-  height: 60px;
   background: #1a1a1a;
   border-bottom: 1px solid #333;
   pointer-events: none;
@@ -776,7 +806,7 @@ onUnmounted(() => {
 .waveform-track :deep(canvas) {
   display: block !important;
   width: 100% !important;
-  height: 60px !important;
+  height: v-bind('waveformHeight + "px"') !important;
   background: transparent !important;
 }
 
