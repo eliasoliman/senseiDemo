@@ -48,6 +48,13 @@ const startResizeTimeline = (e) => {
   window.addEventListener('mouseup', onUp)
 }
 
+const isDarkMode = ref(true)
+
+const toggleTheme = () => {
+  isDarkMode.value = !isDarkMode.value
+  document.body.classList.toggle('light-mode', !isDarkMode.value)
+}
+
 const startResizeSidebar = (e) => {
   e.preventDefault()
   const content = document.querySelector('.content')
@@ -402,11 +409,21 @@ const checkSubtitleEnd = () => {
   }
 }
 
-const handleSidebarDoubleClick = (index) => {
+const stopAtTime = ref(null)
+let rafId = null
+
+const handleSidebarClick = (index) => {
   const arr = sidebarSubtitles.value
   if (!videoPlayer.value || !arr[index]) return
-  videoPlayer.value.currentTime = parseSrtTimestamp(arr[index].timestamp)
-  videoPlayer.value.pause()
+  const sub = arr[index]
+  const parts = sub.timestamp.includes('-->')
+    ? sub.timestamp.split('-->').map(t => parseSrtTimestamp(t.trim()))
+    : [parseSrtTimestamp(sub.timestamp), parseSrtTimestamp(sub.timestamp) + 2]
+  const start = parts[0]
+  const duration = Math.max(0.1, parts[1] - parts[0])
+
+  videoPlayer.value.currentTime = start
+  stopAtTime.value = start + (duration - 0.001)
   selectedSubtitleIndex.value = index
   isPlayingSelectedSubtitle.value = false
 }
@@ -414,19 +431,25 @@ const handleSidebarDoubleClick = (index) => {
 const handleSubtitleSelect = (index) => {
   selectedSubtitleIndex.value = index
   isPlayingSelectedSubtitle.value = false
-  if (subtitlesScroll.value && sidebarSubtitles.value[index]) {
-    nextTick(() => {
-      const container = subtitlesScroll.value
-      const blocks = container.querySelectorAll('.subtitle-block')
-      if (blocks[index]) {
-        const block = blocks[index]
-        const targetScroll = block.offsetTop - (container.clientHeight / 2) + (block.clientHeight / 2)
-        container.scrollTo({ top: Math.max(0, targetScroll), behavior: 'smooth' })
-      }
-    })
-  }
-}
 
+  const arr = sidebarSubtitles.value
+  if (!videoPlayer.value || !arr[index]) return
+
+
+  setTimeout(() => {
+    isPlayingSelectedSubtitle.value = true
+  }, 0)
+
+  nextTick(() => {
+    const container = subtitlesScroll.value
+    const blocks = container?.querySelectorAll('.subtitle-block')
+    if (blocks?.[index]) {
+      const block = blocks[index]
+      const targetScroll = block.offsetTop - (container.clientHeight / 2) + (block.clientHeight / 2)
+      container.scrollTo({ top: Math.max(0, targetScroll), behavior: 'smooth' })
+    }
+  })
+}
 provide('onSubtitleSelect', handleSubtitleSelect)
 
 const handleNativeFullscreen = () => {
@@ -446,11 +469,17 @@ const handleNativeFullscreen = () => {
 const setupVideoSync = () => {
   if (videoPlayer.value) {
     videoPlayer.value.onloadedmetadata = () => { videoDuration.value = videoPlayer.value.duration }
-    videoPlayer.value.ontimeupdate = () => { currentTime.value = videoPlayer.value.currentTime; checkSubtitleEnd() }
-    videoPlayer.value.onplay = () => {
-      isPlaying.value = true
-      if (selectedSubtitleIndex.value >= 0 && !isPlayingSelectedSubtitle.value) isPlayingSelectedSubtitle.value = true
+    videoPlayer.value.ontimeupdate = () => {
+      currentTime.value = videoPlayer.value.currentTime
+      checkSubtitleEnd()
     }
+    videoPlayer.value.onplay = () => {
+        isPlaying.value = true
+        if (selectedSubtitleIndex.value >= 0 && !isPlayingSelectedSubtitle.value) {
+          isPlayingSelectedSubtitle.value = false
+          selectedSubtitleIndex.value = -1
+        }
+      }
     videoPlayer.value.onpause = () => { isPlaying.value = false }
 
     videoPlayer.value.onfullscreenchange = handleNativeFullscreen
@@ -458,6 +487,17 @@ const setupVideoSync = () => {
   }
 }
 
+const rafLoop = () => {
+  if (videoPlayer.value) {
+    currentTime.value = videoPlayer.value.currentTime
+    if (stopAtTime.value !== null && videoPlayer.value.currentTime >= stopAtTime.value) {
+      videoPlayer.value.pause()
+      videoPlayer.value.currentTime = stopAtTime.value
+      stopAtTime.value = null
+    }
+  }
+  rafId = requestAnimationFrame(rafLoop)
+}
 const deleteSubtitle = (index) => {
   saveUndoSnapshot()
   const targetArray = activeSidebarTrack.value === 'tran' ? tranSubtitles : subtitles
@@ -507,12 +547,16 @@ const confirmBackSave = async () => {
   await handleSave()
   showBackConfirm.value = false
   clearProjectStorage()
+  document.body.classList.remove('light-mode')
+  isDarkMode.value = true
   router.push('/myprojects')
 }
 
 const confirmBackNoSave = () => {
   showBackConfirm.value = false
   clearProjectStorage()
+  document.body.classList.remove('light-mode')
+  isDarkMode.value = true
   router.push('/myprojects')
 }
 
@@ -637,19 +681,30 @@ onMounted(() => {
   } else {
     showVideoDropModal.value = true
   }
-
+ rafId = requestAnimationFrame(rafLoop)
   autosaveInterval = setInterval(handleSave, 5 * 60 * 1000)
   window.addEventListener('keydown', handleKeydown)
 })
 
 onUnmounted(() => {
+  if (rafId) cancelAnimationFrame(rafId) 
   if (videoUrl.value) URL.revokeObjectURL(videoUrl.value)
   if (autosaveInterval) clearInterval(autosaveInterval)
   window.removeEventListener('keydown', handleKeydown)
 })
 
 const restartVideo = () => { if (videoPlayer.value) { videoPlayer.value.currentTime = 0; videoPlayer.value.pause() } }
-const togglePlay = () => { if (videoPlayer.value) { videoPlayer.value.paused ? videoPlayer.value.play() : videoPlayer.value.pause() } }
+const togglePlay = () => { 
+  if (videoPlayer.value) { 
+    if (videoPlayer.value.paused) {
+      isPlayingSelectedSubtitle.value = false
+      selectedSubtitleIndex.value = -1
+      videoPlayer.value.play()
+    } else {
+      videoPlayer.value.pause()
+    }
+  } 
+}
 const endVideo = () => { if (videoPlayer.value) { videoPlayer.value.currentTime = videoPlayer.value.duration; videoPlayer.value.pause();}};
 const zoomOut = () => { zoomLevel.value = Math.max(0.5, zoomLevel.value - 0.25); pixelsPerSecond.value = 80 * zoomLevel.value; waveformKey.value++ }
 const zoomIn = () => { zoomLevel.value = Math.min(5, zoomLevel.value + 0.25); pixelsPerSecond.value = 80 * zoomLevel.value; waveformKey.value++ }
@@ -690,7 +745,8 @@ watch(videoPlayer, (newPlayer) => { if (newPlayer) setupVideoSync() })
         <h6
           v-else
           @click="startEditName"
-          style="margin: 0; color: #94a3b8; font-size: 0.85rem; cursor: pointer;"
+          class="project-name"
+          :class="{ 'project-name-light': !isDarkMode }"
           title="Click to rename"
         >
           {{ projectName }}
@@ -726,6 +782,16 @@ watch(videoPlayer, (newPlayer) => { if (newPlayer) setupVideoSync() })
           </svg>
           Export SRT
         </button>
+
+        <button class="btn-theme" @click="toggleTheme" :title="isDarkMode ? 'Switch to Light Mode' : 'Switch to Dark Mode'">
+          <svg v-if="isDarkMode" xmlns="http://www.w3.org/2000/svg" width="15" height="15" fill="currentColor" viewBox="0 0 16 16">
+            <path d="M8 11a3 3 0 1 1 0-6 3 3 0 0 1 0 6m0 1a4 4 0 1 0 0-8 4 4 0 0 0 0 8M8 0a.5.5 0 0 1 .5.5v2a.5.5 0 0 1-1 0v-2A.5.5 0 0 1 8 0m0 13a.5.5 0 0 1 .5.5v2a.5.5 0 0 1-1 0v-2A.5.5 0 0 1 8 13m8-5a.5.5 0 0 1-.5.5h-2a.5.5 0 0 1 0-1h2a.5.5 0 0 1 .5.5M3 8a.5.5 0 0 1-.5.5h-2a.5.5 0 0 1 0-1h2A.5.5 0 0 1 3 8m10.657-5.657a.5.5 0 0 1 0 .707l-1.414 1.415a.5.5 0 1 1-.707-.708l1.414-1.414a.5.5 0 0 1 .707 0m-9.193 9.193a.5.5 0 0 1 0 .707L3.05 13.657a.5.5 0 0 1-.707-.707l1.414-1.414a.5.5 0 0 1 .707 0m9.193 2.121a.5.5 0 0 1-.707 0l-1.414-1.414a.5.5 0 0 1 .707-.707l1.414 1.414a.5.5 0 0 1 0 .707M4.464 4.465a.5.5 0 0 1-.707 0L2.343 3.05a.5.5 0 1 1 .707-.707l1.414 1.414a.5.5 0 0 1 0 .707"/>
+          </svg>
+          <svg v-else xmlns="http://www.w3.org/2000/svg" width="15" height="15" fill="currentColor" viewBox="0 0 16 16">
+            <path d="M6 .278a.77.77 0 0 1 .08.858 7.2 7.2 0 0 0-.878 3.46c0 4.021 3.278 7.277 7.318 7.277q.792-.001 1.533-.16a.79.79 0 0 1 .81.316.73.73 0 0 1-.031.893A8.35 8.35 0 0 1 8.344 16C3.734 16 0 12.286 0 7.71 0 4.266 2.114 1.312 5.124.06A.75.75 0 0 1 6 .278"/>
+          </svg>
+        </button>
+
       </nav>
     </header>
 
@@ -777,8 +843,8 @@ watch(videoPlayer, (newPlayer) => { if (newPlayer) setupVideoSync() })
             <div class="subtitle-separator subtitle-separator--edge">
               <div class="separator-line"></div>
               <div class="separator-actions">
-                <button class="btn-sep btn-add" @click.stop="addSubtitleAtStart">+ add</button>
-                <button class="btn-sep btn-duplicate" @click.stop="duplicateSubtitleAtStart">⧉ duplicate</button>
+                <button class="btn-sep btn-add" @click.stop="addSubtitleAtStart">+ ADD</button>
+                <button class="btn-sep btn-duplicate" @click.stop="duplicateSubtitleAtStart">⧉ DUPLICATE</button>
               </div>
               <div class="separator-line"></div>
             </div>
@@ -787,7 +853,7 @@ watch(videoPlayer, (newPlayer) => { if (newPlayer) setupVideoSync() })
               <div
                 class="subtitle-block"
                 :class="{ 'subtitle-block-active': isSubtitleActive(index) }"
-                @dblclick="handleSidebarDoubleClick(index)"
+                @click="handleSidebarClick(index)"
               >
                 <span class="timestamp">{{ subtitle.timestamp }}</span>
                 <p class="testo">{{ subtitle.testo }}</p>
@@ -800,9 +866,9 @@ watch(videoPlayer, (newPlayer) => { if (newPlayer) setupVideoSync() })
               <div v-if="index < sidebarSubtitles.length - 1" class="subtitle-separator">
                 <div class="separator-line"></div>
                 <div class="separator-actions">
-                  <button class="btn-sep btn-add" @click.stop="addSubtitleBetween(index)">+ add</button>
-                  <button class="btn-sep btn-duplicate" @click.stop="duplicateSubtitleBetween(index)">⧉ duplicate</button>
-                  <button class="btn-sep btn-merge" @click.stop="mergeSubtitles(index)">⊕ merge</button>
+                  <button class="btn-sep btn-add" @click.stop="addSubtitleBetween(index)">+ ADD</button>
+                  <button class="btn-sep btn-duplicate" @click.stop="duplicateSubtitleBetween(index)">⧉ DUPLICATE</button>
+                  <button class="btn-sep btn-merge" @click.stop="mergeSubtitles(index)">⊕ MERGE</button>
                 </div>
                 <div class="separator-line"></div>
               </div>
@@ -811,8 +877,8 @@ watch(videoPlayer, (newPlayer) => { if (newPlayer) setupVideoSync() })
             <div class="subtitle-separator subtitle-separator--edge">
               <div class="separator-line"></div>
               <div class="separator-actions">
-                <button class="btn-sep btn-add" @click.stop="addSubtitleAtEnd">+ add</button>
-                <button class="btn-sep btn-duplicate" @click.stop="duplicateSubtitleAtEnd">⧉ duplicate</button>
+                <button class="btn-sep btn-add" @click.stop="addSubtitleAtEnd">+ ADD</button>
+                <button class="btn-sep btn-duplicate" @click.stop="duplicateSubtitleAtEnd">⧉ DUPLICATE</button>
               </div>
               <div class="separator-line"></div>
             </div>
@@ -1056,8 +1122,8 @@ h3 { color: rgba(31, 125, 240, 0.918); }
 .subtitle-block:hover { background: #353841; }
 .subtitle-block-active { background: #3a4a5a !important; box-shadow: 0 0 8px #00cc9999; transform: scale(1.02); }
 
-.timestamp { display: block; font-weight: bold; color: rgba(31, 125, 240, 0.918); font-size: 0.85rem; margin-bottom: 4px; margin-left: 5px; flex-shrink: 0; }
-.subtitle-block-active .timestamp { color: #00cc99; }
+.timestamp { display: block; font-weight: bold; color: rgb(60, 145, 250); font-size: 0.85rem; margin-bottom: 4px; margin-left: 5px; flex-shrink: 0; }
+.subtitle-block-active .timestamp { color: #00ffbf; }
 .testo { margin: 0 0 6px 5px; color: #fff; line-height: 1.4; font-size: 0.9rem; word-break: break-word; white-space: pre-line; }
 .block-actions { display: flex; justify-content: flex-end; gap: 6px; flex-shrink: 0; margin-top: 2px; }
 .btn-delete, .btn-edit { padding: 3px 10px; border: none; border-radius: 4px; font-size: 0.72rem; font-weight: 600; cursor: pointer; transition: all 0.2s ease; line-height: 1.5; }
@@ -1140,6 +1206,23 @@ textarea.form-control { resize: vertical; min-height: 100px; }
 .btn-primary { background: rgba(31, 125, 240, 0.918); color: #fff; }
 .btn-primary:hover { background: rgba(31, 125, 240, 1); transform: translateY(-1px); box-shadow: 0 4px 8px rgba(31, 125, 240, 0.3); }
 
+.btn-theme {
+  display: flex; align-items: center; gap: 6px; padding: 6px 18px;
+  background: transparent; color: #94a3b8; border: 1px solid #2d3748; border-radius: 5px;
+  font-weight: 700; font-size: 0.9rem; cursor: pointer; transition: all 0.2s ease; letter-spacing: 0.03em;
+}
+.btn-theme:hover { border-color: #4a5568; color: #e2e8f0; }
+
+.project-name {
+  margin: 0;
+  color: #94a3b8;
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+
+.project-name-light {
+  color: #1e293b !important;
+}
 .video-drop-overlay {
   position: fixed; inset: 0; background: rgba(0, 0, 0, 0.92);
   display: flex; align-items: center; justify-content: center; z-index: 9999; backdrop-filter: blur(6px);
@@ -1233,6 +1316,140 @@ textarea.form-control { resize: vertical; min-height: 100px; }
 .resize-handle-v:hover::after,
 .resize-handle-v:active::after {
   background: rgba(31, 125, 240, 0.8);
+}
+
+/* ─── Light mode: sidebar subtitle blocks ───────────────────────── */
+
+/* Blocco base */
+:global(body.light-mode) .subtitle-block {
+  background: #c8d8ee !important;
+  border-left-color: #1a56db !important;
+}
+:global(body.light-mode) .subtitle-block:hover {
+  background: #b8cceb !important;
+}
+:global(body.light-mode) .subtitle-block-active {
+  background: #93c5fd !important;
+  box-shadow: 0 0 10px rgba(37, 99, 235, 0.6) !important;
+}
+
+/* Timestamp */
+:global(body.light-mode) .timestamp {
+  color: #1a3fbf !important;
+}
+:global(body.light-mode) .subtitle-block-active .timestamp {
+  color: #0369a1 !important;
+}
+
+/* Testo */
+:global(body.light-mode) .testo {
+  color: #0f172a !important;
+}
+
+/* Track switcher active buttons */
+:global(body.light-mode) .track-btn.active {
+  color: #1a3fbf !important;
+  border-bottom-color: #1a3fbf !important;
+  background: rgba(26, 63, 191, 0.1) !important;
+}
+:global(body.light-mode) .track-btn:last-child.active {
+  color: #047857 !important;
+  border-bottom-color: #047857 !important;
+  background: rgba(4, 120, 87, 0.1) !important;
+}
+
+/* Badge */
+:global(body.light-mode) .badge-tran {
+  color: #1a3fbf !important;
+  background: rgba(26, 63, 191, 0.15) !important;
+}
+:global(body.light-mode) .badge-orig {
+  color: #047857 !important;
+  background: rgba(4, 120, 87, 0.15) !important;
+}
+
+/* btn-delete e btn-edit più vivaci */
+:global(body.light-mode) .btn-delete {
+  background: rgba(185, 28, 28, 0.75) !important;
+  color: #fff !important;
+}
+:global(body.light-mode) .btn-delete:hover {
+  background: rgba(185, 28, 28, 1) !important;
+}
+:global(body.light-mode) .btn-edit {
+  background: rgba(26, 63, 191, 0.85) !important;
+  color: #fff !important;
+}
+:global(body.light-mode) .btn-edit:hover {
+  background: rgba(26, 63, 191, 1) !important;
+}
+
+/* Video commands SVG in light mode */
+:global(body.light-mode) .video-commands svg {
+  color: #1e293b !important;
+  fill: #1e293b !important;
+}
+:global(body.light-mode) .video-commands svg:hover {
+  color: #1a3fbf !important;
+  fill: #1a3fbf !important;
+}
+
+/* Zoom icons in light mode */
+:global(body.light-mode) .zoomIcons svg {
+  color: #1e293b !important;
+  fill: #1e293b !important;
+}
+:global(body.light-mode) .zoomIcons svg:hover {
+  color: #1a3fbf !important;
+  fill: #1a3fbf !important;
+}
+
+/* Timeline resize handle in light mode */
+:global(body.light-mode) .resize-handle-h::after,
+:global(body.light-mode) .resize-handle-v::after {
+  background: rgba(0, 0, 0, 0.25) !important;
+}
+:global(body.light-mode) .resize-handle-h:hover,
+:global(body.light-mode) .resize-handle-v:hover {
+  background: rgba(26, 63, 191, 0.15) !important;
+}
+
+:global(body.light-mode) .btn-add {
+  background: rgba(26, 63, 191, 0.2) !important;
+  color: #1a3fbf !important;
+  border-color: rgba(26, 63, 191, 0.7) !important;
+}
+:global(body.light-mode) .btn-add:hover {
+  background: rgba(26, 63, 191, 0.85) !important;
+  color: #fff !important;
+  box-shadow: 0 2px 6px rgba(26, 63, 191, 0.45) !important;
+}
+
+:global(body.light-mode) .btn-duplicate {
+  background: rgba(109, 40, 217, 0.15) !important;
+  color: #5b21b6 !important;
+  border-color: rgba(109, 40, 217, 0.6) !important;
+}
+:global(body.light-mode) .btn-duplicate:hover {
+  background: rgba(109, 40, 217, 0.85) !important;
+  color: #fff !important;
+  box-shadow: 0 2px 6px rgba(109, 40, 217, 0.45) !important;
+}
+
+:global(body.light-mode) .btn-merge {
+  background: rgba(4, 120, 87, 0.15) !important;
+  color: #047857 !important;
+  border-color: rgba(4, 120, 87, 0.6) !important;
+}
+:global(body.light-mode) .btn-merge:hover {
+  background: rgba(4, 120, 87, 0.85) !important;
+  color: #fff !important;
+  box-shadow: 0 2px 6px rgba(4, 120, 87, 0.45) !important;
+}
+
+/* separator line più visibile */
+:global(body.light-mode) .separator-line {
+  background: rgba(0, 0, 0, 0.2) !important;
 }
 
 :deep(video::-webkit-media-controls-fullscreen-button) {

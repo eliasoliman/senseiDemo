@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed, onMounted, onUnmounted, watch, inject } from 'vue'
+import { ref, computed, onMounted, onUnmounted, watch, inject, watchEffect } from 'vue'
 import { AVWaveform } from 'vue-audio-visual'
 
 const props = defineProps({
@@ -42,6 +42,8 @@ const subtitleType = ref(null)
 const isClick = ref(true)
 const snapshotSaved = ref(false)
 
+const stopAtTime = ref(null)
+
 // ─── Track availability ───────────────────────────────────────────────────────
 const hasOriginal = computed(() => props.subtitles && props.subtitles.length > 0)
 const hasTranslation = computed(() => props.tranSubtitles && props.tranSubtitles.length > 0)
@@ -62,6 +64,25 @@ const trackAreaHeight = computed(() => {
   if (hasOriginal.value || hasTranslation.value) return `${wh + TRACK_HEIGHT}px`
   return `${wh}px`
 })
+
+const isLightMode = ref(document.body.classList.contains('light-mode'))
+
+const themeObserver = new MutationObserver(() => {
+  isLightMode.value = document.body.classList.contains('light-mode')
+})
+
+onMounted(() => {
+  themeObserver.observe(document.body, { attributes: true, attributeFilter: ['class'] })
+})
+
+onUnmounted(() => {
+  themeObserver.disconnect()
+})
+
+const waveformColor = computed(() => isLightMode.value ? '#1a56db' : '#60a5fa')
+const playheadColor = computed(() => isLightMode.value ? '#cc0000' : '#ff4500')
+const playheadShadow = computed(() => isLightMode.value ? '0 0 6px rgba(180,0,0,0.8)' : '0 0 5px rgba(255,69,0,0.5)')
+
 const TRACK_HEIGHT = 50 
 
 const leftGridRows = computed(() => {
@@ -69,6 +90,26 @@ const leftGridRows = computed(() => {
   if (hasOriginal.value && hasTranslation.value) return `${wh}px ${TRACK_HEIGHT}px ${TRACK_HEIGHT}px`
   if (hasOriginal.value || hasTranslation.value) return `${wh}px ${TRACK_HEIGHT}px`
   return `${wh}px`
+})
+
+const formatPlayheadTime = (seconds) => {
+  const h = Math.floor(seconds / 3600)
+  const m = Math.floor((seconds % 3600) / 60)
+  const s = Math.floor(seconds % 60)
+  const ms = Math.floor((seconds % 1) * 1000)
+  return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')},${ms.toString().padStart(3, '0')}`
+}
+
+const activeDragSub = computed(() => {
+  if (draggingSubtitle.value) {
+    const list = subtitleType.value === 'tran' ? processedTranSubtitles.value : processedSubtitles.value
+    return list.find(s => s.id === draggingSubtitle.value.id) ?? null
+  }
+  if (resizingSubtitle.value) {
+    const list = subtitleType.value === 'tran' ? processedTranSubtitles.value : processedSubtitles.value
+    return list.find(s => s.id === resizingSubtitle.value.id) ?? null
+  }
+  return null
 })
 
 const activeSidebarTrack = ref(
@@ -199,7 +240,7 @@ const handleSubtitleClick = (sub, type) => {
   if (props.videoRef) {
     const videoElement = props.videoRef.value || props.videoRef
     videoElement.currentTime = sub.start
-    videoElement.pause()
+    stopAtTime.value = sub.start + (sub.duration -0.001)                        
     if (onSubtitleSelect) {
       onSubtitleSelect(sub.id)
     }
@@ -329,6 +370,7 @@ const handlePlayheadMouseDown = (event) => {
   isPlayheadActuallyDragging.value = false
   document.body.style.cursor = 'grabbing'
   document.body.style.userSelect = 'none'
+  stopAtTime.value = null
 }
 
 const handleMouseMove = (event) => {
@@ -352,9 +394,9 @@ const handleMouseMove = (event) => {
       left: Math.max(0, playheadPosition - containerWidth * 0.5),
       behavior: 'smooth'
     })
-    setTimeout(() => { scrollCooldown = false }, 1000) // ← puoi alzare a 1500ms
+    setTimeout(() => { scrollCooldown = false }, 1000) 
   }
-
+  stopAtTime.value = null
   return
 }
 
@@ -470,6 +512,12 @@ onMounted(() => {
         const el = props.videoRef.value || props.videoRef
         currentTime.value = el.currentTime
         isPlaying.value = !el.paused
+
+        if (stopAtTime.value !== null && el.currentTime >= stopAtTime.value) {
+          el.pause()
+          el.currentTime = stopAtTime.value   
+          stopAtTime.value = null             
+        }
       }
       rafId = requestAnimationFrame(loop)
     }
@@ -558,6 +606,13 @@ onUnmounted(() => {
         class="ruler" 
         :style="{ width: (duration * pixelsPerSecond) + 'px' }"
       >
+        <div
+          v-if="isDragging"
+          class="playhead-tooltip"
+          :style="{ left: (currentTime * pixelsPerSecond) + 'px' }"
+        >
+          {{ formatPlayheadTime(currentTime) }}
+        </div>
         <div 
           v-for="time in timeMarkers" 
           :key="time" 
@@ -570,12 +625,26 @@ onUnmounted(() => {
       </div>
 
       <div class="track-area" :style="{ width: (duration * pixelsPerSecond) + 'px', height: trackAreaHeight }">
+        <div
+          v-if="activeDragSub"
+          class="subtitle-drag-tooltip"
+          :style="{
+            left: ((activeDragSub.start + activeDragSub.duration / 2) * pixelsPerSecond) + 'px',
+            top: subtitleType === 'tran' ? tranTop : origTop
+          }"
+        >
+          {{ formatPlayheadTime(activeDragSub.start) }} &#8594; {{ formatPlayheadTime(activeDragSub.start + activeDragSub.duration) }}
+        </div>
         <div 
           class="playhead" 
           :style="{ transform: `translateX(${currentTime * pixelsPerSecond}px)` }"
           @mousedown="handlePlayheadMouseDown"
         >
-          <div class="playhead-line" :style="{ height: `calc(${trackAreaHeight} + 30px)` }"></div>
+          <div class="playhead-line" :style="{ 
+            height: `calc(${trackAreaHeight} + 30px)`,
+            background: playheadColor,
+            boxShadow: playheadShadow
+          }"></div>
         </div>
 
         <div 
@@ -593,7 +662,7 @@ onUnmounted(() => {
             :playtime-line-width="0"
             :line-width="3"
             :line-space="2"
-            :line-color="'#60a5fa'"
+            :line-color="waveformColor"
             :audio-controls="false"
             :noplayed-line-width="0"
           />
@@ -612,6 +681,7 @@ onUnmounted(() => {
               'sub-block-dragging': draggingSubtitle?.id === sub.id || resizingSubtitle?.id === sub.id,
               'sub-block-sidebar-active': activeSidebarTrack === 'orig',
               'sub-block-active': isSubtitleActive(sub),
+              'sub-block-orig-light': isLightMode
             }"
             :style="{ 
               position: 'absolute',
@@ -645,7 +715,8 @@ onUnmounted(() => {
             :class="{ 
               'sub-block-active': isSubtitleActive(sub),
               'sub-block-dragging': draggingSubtitle?.id === sub.id || resizingSubtitle?.id === sub.id,
-              'sub-block-sidebar-active': activeSidebarTrack === 'tran'
+              'sub-block-sidebar-active': activeSidebarTrack === 'tran',
+              'sub-block-tran-light': isLightMode
             }"
             :style="{ 
               position: 'absolute',
@@ -689,8 +760,8 @@ onUnmounted(() => {
 }
 
 .waveform-label {
-  font-size: 11px;
-  color: #888;
+  font-size: 14px;
+  color: #b0afaf;
   padding-left: 6px;
 }
 
@@ -699,8 +770,8 @@ onUnmounted(() => {
   align-items: center;
   justify-content: space-between;
   padding: 0 6px;
-  font-size: 11px;
-  color: #888;
+  font-size: 14px;
+  color: #b0afaf;
 }
 
 .track-label span {
@@ -851,6 +922,40 @@ onUnmounted(() => {
   user-select: none;
 }
 
+.playhead-tooltip {
+  position: absolute;
+  top: 4px;
+  transform: translateX(-50%);
+  background: #1e1e1e;
+  border: 1px solid #555;
+  color: #e0e0e0;
+  font-size: 11px;
+  font-family: monospace;
+  padding: 3px 7px;
+  border-radius: 4px;
+  white-space: nowrap;
+  pointer-events: none;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.5);
+  z-index: 200;
+}
+
+.subtitle-drag-tooltip {
+  position: absolute;
+  transform: translate(-50%, -100%);
+  margin-top: -4px;
+  background: #1e1e1e;
+  border: 1px solid #555;
+  color: #e0e0e0;
+  font-size: 11px;
+  font-family: monospace;
+  padding: 3px 7px;
+  border-radius: 4px;
+  white-space: nowrap;
+  pointer-events: none;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.5);
+  z-index: 200;
+}
+
 .sub-block-tran {
   background: rgba(0, 120, 215, 0.5);
   border: 1px solid #0078d7;
@@ -893,6 +998,27 @@ onUnmounted(() => {
   overflow: hidden;
   flex: 1;
   pointer-events: none;
+  font-size: 12px;
+}
+
+.sub-block-orig-light {
+  background: rgba(0, 140, 100, 0.75) !important;
+  border: 2px solid #006644 !important;
+  color: #fff;
+}
+
+.sub-block-orig-light:hover {
+  background: rgba(0, 140, 100, 0.95) !important;
+}
+
+.sub-block-tran-light {
+  background: rgba(20, 80, 200, 0.75) !important;
+  border: 2px solid #0a3fa0 !important;
+  color: #fff;
+}
+
+.sub-block-tran-light:hover {
+  background: rgba(20, 80, 200, 0.95) !important;
 }
 
 .resize-handle {
