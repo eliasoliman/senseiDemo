@@ -1,6 +1,6 @@
 <script setup>
-import { ref, computed, onMounted, onUnmounted, watch, inject, watchEffect } from 'vue'
-import { AVWaveform } from 'vue-audio-visual'
+import { ref, computed, onMounted, onUnmounted, watch, inject, nextTick } from 'vue'
+import WaveSurfer from 'wavesurfer.js'
 
 const props = defineProps({
   duration: Number,
@@ -41,6 +41,8 @@ const dragStartDuration = ref(0)
 const subtitleType = ref(null)
 const isClick = ref(true)
 const snapshotSaved = ref(false)
+const wavesurferInstance = ref(null)
+const waveformContainer = ref(null)
 
 const stopAtTime = ref(null)
 
@@ -71,6 +73,28 @@ const themeObserver = new MutationObserver(() => {
   isLightMode.value = document.body.classList.contains('light-mode')
 })
 
+const initWaveSurfer = () => {
+  if (!videoSrc.value || !waveformContainer.value) return
+  if (wavesurferInstance.value) {
+    wavesurferInstance.value.destroy()
+    wavesurferInstance.value = null
+  }
+  wavesurferInstance.value = WaveSurfer.create({
+    container: waveformContainer.value,
+    waveColor: '#86868b',
+    progressColor: '#86868b',
+    barWidth: 3,
+    barGap: 2,
+    barRadius: 2,
+    height: props.waveformHeight,
+    width: waveformWidth.value,
+    backend: 'MediaElement',
+    media: props.videoRef?.value || props.videoRef,
+    interact: false,
+    normalize: true,
+  })
+}
+
 onMounted(() => {
   themeObserver.observe(document.body, { attributes: true, attributeFilter: ['class'] })
 })
@@ -79,7 +103,7 @@ onUnmounted(() => {
   themeObserver.disconnect()
 })
 
-const waveformColor = computed(() => isLightMode.value ? '#1a56db' : '#60a5fa')
+const waveformColor = ref('#fefefe')
 const playheadColor = computed(() => isLightMode.value ? '#cc0000' : '#ff4500')
 const playheadShadow = computed(() => isLightMode.value ? '0 0 6px rgba(180,0,0,0.8)' : '0 0 5px rgba(255,69,0,0.5)')
 
@@ -150,12 +174,18 @@ const getVideoSrc = () => {
   return videoElement.src || videoElement.currentSrc || ''
 }
 
-watch(() => props.videoRef, () => {
-  videoSrc.value = getVideoSrc()
-}, { immediate: true, deep: true })
+watch(videoSrc, (val) => {
+  if (val) {
+    nextTick(() => initWaveSurfer())
+  }
+})
 
 watch(() => props.pixelsPerSecond, () => {
-  waveformKey.value++
+  if (wavesurferInstance.value) {
+    wavesurferInstance.value.destroy()
+    wavesurferInstance.value = null
+  }
+  initWaveSurfer()
 })
 
 const parseSrtTimestamp = (timestampStr) => {
@@ -332,16 +362,9 @@ const debounce = (fn, delay) => {
   }
 }
 
-
-const waveformKeyHeight = ref(props.waveformHeight)
-
-const updateWaveformKeyHeight = debounce((val) => {
-  waveformKeyHeight.value = val
-}, 600)
-
-watch(() => props.waveformHeight, (val) => {
-  updateWaveformKeyHeight(val)
-})
+watch(() => props.waveformHeight, debounce(() => {
+  initWaveSurfer()
+}, 600))
 
 const handleSubtitleMouseDown = (event, sub, edge = null, type = null) => {
   event.preventDefault()
@@ -548,6 +571,7 @@ onMounted(() => {
 
 onUnmounted(() => {
   stopRaf()
+  if (wavesurferInstance.value) wavesurferInstance.value.destroy()
   document.removeEventListener('mousemove', handleMouseMove)
   document.removeEventListener('mouseup', handleMouseUp)
 })
@@ -647,26 +671,12 @@ onUnmounted(() => {
           }"></div>
         </div>
 
-        <div 
-          ref="waveformContainer" 
+        <div
+          ref="waveformContainer"
           class="waveform-track"
           :style="{ width: waveformWidth + 'px', height: waveformHeight + 'px' }"
         >
-          <AVWaveform
-            v-if="videoSrc"
-            :key="`${videoSrc}-${waveformKey}-${waveformKeyHeight}`"
-            :src="videoSrc"
-            :canv-width="waveformWidth"
-            :canv-height="props.waveformHeight"
-            :playtime="false"
-            :playtime-line-width="0"
-            :line-width="3"
-            :line-space="2"
-            :line-color="waveformColor"
-            :audio-controls="false"
-            :noplayed-line-width="0"
-          />
-          <div v-else class="waveform-placeholder">
+          <div v-if="!videoSrc" class="waveform-placeholder">
             Caricamento video...
           </div>
         </div>
@@ -809,7 +819,7 @@ onUnmounted(() => {
 .timeline-wrapper {
   width: 100%;
   overflow-x: auto;
-  background: #111;
+  background-color: #1c2331;
   border-top: 1px solid #333;
   position: relative;
   scrollbar-width: thin;
@@ -820,7 +830,7 @@ onUnmounted(() => {
 .ruler {
   height: 30px;
   position: relative;
-  background: #1a1a1a;
+  background-color: #1c2331;
   border-bottom: 1px solid #333;
 }
 
@@ -849,7 +859,7 @@ onUnmounted(() => {
 
 .track-area {
   position: relative;
-  background: #141414;
+  background-color: #1c2331;
   background-image: linear-gradient(to right, #222 1px, transparent 1px);
   background-size: v-bind('pixelsPerSecond + "px"') 100%;
 }
@@ -858,7 +868,7 @@ onUnmounted(() => {
   position: absolute;
   top: 0;
   left: 0;
-  background: #1a1a1a;
+  background-color: #1c2331;
   border-bottom: 1px solid #333;
   pointer-events: none;
   user-select: none;
@@ -957,21 +967,21 @@ onUnmounted(() => {
 }
 
 .sub-block-tran {
-  background: rgba(0, 120, 215, 0.5);
-  border: 1px solid #0078d7;
+  background: rgba(59, 131, 246, 0.5);
+  border: 1px solid #3b82f6;
 }
 
 .sub-block-tran:hover {
-  background: rgba(0, 120, 215, 0.8);
+  background: rgba(59, 131, 246, 0.83)
 }
 
 .sub-block-orig {
-  background: rgba(0, 170, 140, 0.45);
-  border: 1px solid #00aa8c;
+  background: rgba(142, 73, 160, 0.45);
+  border: 1px solid #8e49a0;
 }
 
 .sub-block-orig:hover {
-  background: rgba(0, 170, 140, 0.75);
+  background: rgba(142, 73, 160, 0.75);
 }
 
 .sub-block-sidebar-active {
@@ -1001,25 +1011,10 @@ onUnmounted(() => {
   font-size: 12px;
 }
 
-.sub-block-orig-light {
-  background: rgba(0, 140, 100, 0.75) !important;
-  border: 2px solid #006644 !important;
-  color: #fff;
+.waveform-track :deep(wave) {
+  overflow: hidden !important;
 }
 
-.sub-block-orig-light:hover {
-  background: rgba(0, 140, 100, 0.95) !important;
-}
-
-.sub-block-tran-light {
-  background: rgba(20, 80, 200, 0.75) !important;
-  border: 2px solid #0a3fa0 !important;
-  color: #fff;
-}
-
-.sub-block-tran-light:hover {
-  background: rgba(20, 80, 200, 0.95) !important;
-}
 
 .resize-handle {
   position: absolute;

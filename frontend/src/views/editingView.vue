@@ -708,7 +708,11 @@ const togglePlay = () => {
 const endVideo = () => { if (videoPlayer.value) { videoPlayer.value.currentTime = videoPlayer.value.duration; videoPlayer.value.pause();}};
 const zoomOut = () => { zoomLevel.value = Math.max(0.5, zoomLevel.value - 0.25); pixelsPerSecond.value = 80 * zoomLevel.value; waveformKey.value++ }
 const zoomIn = () => { zoomLevel.value = Math.min(5, zoomLevel.value + 0.25); pixelsPerSecond.value = 80 * zoomLevel.value; waveformKey.value++ }
-
+const onZoomSlider = (e) => {
+  zoomLevel.value = parseFloat(e.target.value)
+  pixelsPerSecond.value = 80 * zoomLevel.value
+  waveformKey.value++
+}
 const toggleFullscreen = () => {
   if (!videoPlayer.value) return
 
@@ -730,7 +734,7 @@ watch(videoPlayer, (newPlayer) => { if (newPlayer) setupVideoSync() })
 <template>
   <div class="wrapper">
     <header class="header fixed-top p-3 d-flex justify-content-between align-items-center">
-      <h3 class="mb-0">Sensei</h3>
+      <div class="logo">Sensei</div>
 
       <div style="position: absolute; left: 50%; transform: translateX(-50%);">
         <input
@@ -782,16 +786,6 @@ watch(videoPlayer, (newPlayer) => { if (newPlayer) setupVideoSync() })
           </svg>
           Export SRT
         </button>
-
-        <button class="btn-theme" @click="toggleTheme" :title="isDarkMode ? 'Switch to Light Mode' : 'Switch to Dark Mode'">
-          <svg v-if="isDarkMode" xmlns="http://www.w3.org/2000/svg" width="15" height="15" fill="currentColor" viewBox="0 0 16 16">
-            <path d="M8 11a3 3 0 1 1 0-6 3 3 0 0 1 0 6m0 1a4 4 0 1 0 0-8 4 4 0 0 0 0 8M8 0a.5.5 0 0 1 .5.5v2a.5.5 0 0 1-1 0v-2A.5.5 0 0 1 8 0m0 13a.5.5 0 0 1 .5.5v2a.5.5 0 0 1-1 0v-2A.5.5 0 0 1 8 13m8-5a.5.5 0 0 1-.5.5h-2a.5.5 0 0 1 0-1h2a.5.5 0 0 1 .5.5M3 8a.5.5 0 0 1-.5.5h-2a.5.5 0 0 1 0-1h2A.5.5 0 0 1 3 8m10.657-5.657a.5.5 0 0 1 0 .707l-1.414 1.415a.5.5 0 1 1-.707-.708l1.414-1.414a.5.5 0 0 1 .707 0m-9.193 9.193a.5.5 0 0 1 0 .707L3.05 13.657a.5.5 0 0 1-.707-.707l1.414-1.414a.5.5 0 0 1 .707 0m9.193 2.121a.5.5 0 0 1-.707 0l-1.414-1.414a.5.5 0 0 1 .707-.707l1.414 1.414a.5.5 0 0 1 0 .707M4.464 4.465a.5.5 0 0 1-.707 0L2.343 3.05a.5.5 0 1 1 .707-.707l1.414 1.414a.5.5 0 0 1 0 .707"/>
-          </svg>
-          <svg v-else xmlns="http://www.w3.org/2000/svg" width="15" height="15" fill="currentColor" viewBox="0 0 16 16">
-            <path d="M6 .278a.77.77 0 0 1 .08.858 7.2 7.2 0 0 0-.878 3.46c0 4.021 3.278 7.277 7.318 7.277q.792-.001 1.533-.16a.79.79 0 0 1 .81.316.73.73 0 0 1-.031.893A8.35 8.35 0 0 1 8.344 16C3.734 16 0 12.286 0 7.71 0 4.266 2.114 1.312 5.124.06A.75.75 0 0 1 6 .278"/>
-          </svg>
-        </button>
-
       </nav>
     </header>
 
@@ -914,13 +908,22 @@ watch(videoPlayer, (newPlayer) => { if (newPlayer) setupVideoSync() })
       <div class="timeline">
         <div class="time-row">
           <div class="name zoomIcons">
-            <svg @click="zoomOut" xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="currentColor" class="bi bi-zoom-out" viewBox="0 0 16 16">
-              <path fill-rule="evenodd" d="M6.5 12a5.5 5.5 0 1 0 0-11 5.5 5.5 0 0 0 0 11M13 6.5a6.5 6.5 0 1 1-13 0 6.5 6.5 0 0 1 13 0"/><path d="M10.344 11.742q.044.06.098.115l3.85 3.85a1 1 0 0 0 1.415-1.414l-3.85-3.85a1 1 0 0 0-.115-.1 6.5 6.5 0 0 1-1.398 1.4z"/><path fill-rule="evenodd" d="M3 6.5a.5.5 0 0 1 .5-.5h6a.5.5 0 0 1 0 1h-6a.5.5 0 0 1-.5-.5"/>
-            </svg>
-            <svg @click="zoomIn" xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="currentColor" class="bi bi-zoom-in" viewBox="0 0 16 16">
-              <path fill-rule="evenodd" d="M6.5 12a5.5 5.5 0 1 0 0-11 5.5 5.5 0 0 0 0 11M13 6.5a6.5 6.5 0 1 1-13 0 6.5 6.5 0 0 1 13 0"/><path d="M10.344 11.742q.044.06.098.115l3.85 3.85a1 1 0 0 0 1.415-1.414l-3.85-3.85a1 1 0 0 0-.115-.1 6.5 6.5 0 0 1-1.398 1.4z"/><path fill-rule="evenodd" d="M6.5 3a.5.5 0 0 1 .5.5V6h2.5a.5.5 0 0 1 0 1H7v2.5a.5.5 0 0 1-1 0V7H3.5a.5.5 0 0 1 0-1H6V3.5a.5.5 0 0 1 .5-.5"/>
-            </svg>
-          </div>
+          <svg @click="zoomOut" xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="currentColor" class="bi bi-zoom-out" viewBox="0 0 16 16">
+            <path fill-rule="evenodd" d="M6.5 12a5.5 5.5 0 1 0 0-11 5.5 5.5 0 0 0 0 11M13 6.5a6.5 6.5 0 1 1-13 0 6.5 6.5 0 0 1 13 0"/><path d="M10.344 11.742q.044.06.098.115l3.85 3.85a1 1 0 0 0 1.415-1.414l-3.85-3.85a1 1 0 0 0-.115-.1 6.5 6.5 0 0 1-1.398 1.4z"/><path fill-rule="evenodd" d="M3 6.5a.5.5 0 0 1 .5-.5h6a.5.5 0 0 1 0 1h-6a.5.5 0 0 1-.5-.5"/>
+          </svg>
+          <input
+            type="range"
+            class="zoom-slider"
+            min="0.5"
+            max="5"
+            step="0.25"
+            :value="zoomLevel"
+            @input="onZoomSlider"
+          />
+          <svg @click="zoomIn" xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="currentColor" class="bi bi-zoom-in" viewBox="0 0 16 16">
+            <path fill-rule="evenodd" d="M6.5 12a5.5 5.5 0 1 0 0-11 5.5 5.5 0 0 0 0 11M13 6.5a6.5 6.5 0 1 1-13 0 6.5 6.5 0 0 1 13 0"/><path d="M10.344 11.742q.044.06.098.115l3.85 3.85a1 1 0 0 0 1.415-1.414l-3.85-3.85a1 1 0 0 0-.115-.1 6.5 6.5 0 0 1-1.398 1.4z"/><path fill-rule="evenodd" d="M6.5 3a.5.5 0 0 1 .5.5V6h2.5a.5.5 0 0 1 0 1H7v2.5a.5.5 0 0 1-1 0V7H3.5a.5.5 0 0 1 0-1H6V3.5a.5.5 0 0 1 .5-.5"/>
+          </svg>
+        </div>
           <div class="track">
             <subTimeline
               v-if="videoDuration > 0"
@@ -1026,20 +1029,25 @@ watch(videoPlayer, (newPlayer) => { if (newPlayer) setupVideoSync() })
 
 <style scoped>
 .wrapper { 
-  min-height: 100vh; width: 100%; background-color: #212529; color: #fff;
+  min-height: 100vh; width: 100%; background-color: #1c2331; color: #fff;
   text-shadow: 0 0.05rem 0.1rem rgba(0, 0, 0, 0.5); display: grid;
   grid-template-rows: 55px 1fr; grid-template-areas: "header" "container"; overflow: hidden;
 }
-.header { grid-area: header; background-color: #212529; height: 50px; }
-h3 { color: rgba(31, 125, 240, 0.918); }
+.header { grid-area: header; background-color: #1c2331; height: 50px; }
+.logo {
+  font-size: 20px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  color: #f8f9fa;
+}
 .nav { display: flex; gap: 1rem; }
 
 .btn-save {
   display: flex; align-items: center; gap: 6px; padding: 6px 18px;
-  background: rgba(31, 125, 240, 0.85); color: #fff; border: none; border-radius: 5px;
+  background: #3b82f6; color: #f8f9fa; border: none; border-radius: 5px;
   font-weight: 700; font-size: 0.9rem; cursor: pointer; transition: all 0.2s ease; letter-spacing: 0.03em;
 }
-.btn-save:hover { background: rgba(31, 125, 240, 1); transform: translateY(-1px); box-shadow: 0 4px 10px rgba(31, 125, 240, 0.4); }
+.btn-save:hover { background: #3b82f6; transform: translateY(-1px); box-shadow: 0 4px 10px rgba(31, 118, 240, 0.4); }
 .btn-save:active { transform: translateY(0); }
 
 .container {
@@ -1047,6 +1055,7 @@ h3 { color: rgba(31, 125, 240, 0.918); }
   min-width: 100%; height: calc(100vh);; overflow: hidden; gap: 0;
 }
 .content {
+  background-color: #1c2331;
   display: flex;          
   width: 100%;
   overflow: hidden;
@@ -1055,7 +1064,7 @@ h3 { color: rgba(31, 125, 240, 0.918); }
   max-height: 100%;
 }
 
-.sidebar { flex: 0 0 v-bind(sidebarWidthPct + '%'); background-color: rgb(40, 40, 40); display: flex; flex-direction: column; overflow: hidden; height: 100%; }
+.sidebar { flex: 0 0 v-bind(sidebarWidthPct + '%'); background-color: #1c2331; display: flex; flex-direction: column; overflow: hidden; height: 100%; }
 
 /* Track switcher (shown when both tracks exist) */
 .track-switcher {
@@ -1070,7 +1079,7 @@ h3 { color: rgba(31, 125, 240, 0.918); }
 }
 .track-btn:hover { color: #94a3b8; background: rgba(255,255,255,0.04); }
 .track-btn.active { color: rgba(31, 125, 240, 0.918); border-bottom-color: rgba(31, 125, 240, 0.918); background: rgba(31, 125, 240, 0.07); }
-.track-btn:last-child.active { color: #00cc99; border-bottom-color: #00cc99; background: rgba(0, 204, 153, 0.07); }
+.track-btn:last-child.active { color: #8e49a0; border-bottom-color: #8e49a0; background: rgba(0, 204, 153, 0.07); }
 
 .sidebar-track-badge {
   display: flex; align-items: center; gap: 6px; padding: 6px 12px;
@@ -1102,51 +1111,51 @@ h3 { color: rgba(31, 125, 240, 0.918); }
 
 .btn-export {
   display: flex; align-items: center; gap: 6px; padding: 6px 18px;
-  background: rgba(0, 170, 140, 0.2); color: #00cc99; border: 1px solid rgba(0, 170, 140, 0.4);
+  background: rgba(59, 131, 246, 0.2); color: #3b82f6; border: 1px solid #3b82f6;
   border-radius: 5px; font-weight: 700; font-size: 0.9rem; cursor: pointer;
   transition: all 0.2s ease; letter-spacing: 0.03em;
 }
-.btn-export:hover { background: rgba(0, 170, 140, 0.4); color: #fff; border-color: #00cc99; transform: translateY(-1px); box-shadow: 0 4px 10px rgba(0, 170, 140, 0.3); }
+.btn-export:hover { background: rgba(59, 131, 246, 0.42); color: #fff; border-color: #3b82f6; transform: translateY(-1px); box-shadow: 0 4px 10px rgba(0, 79, 170, 0.3); }
 
 .badge-tran { color: rgba(31, 125, 240, 0.918); background: rgba(31, 125, 240, 0.12); }
-.badge-orig { color: #00cc99; background: rgba(0, 170, 140, 0.12); }
+.badge-orig { color: #713481; background: rgba(0, 170, 140, 0.12); }
 
 .subtitles-scroll { flex: 1; overflow-y: auto; overflow-x: hidden; padding-right: 0.5rem; min-height: 0; scroll-behavior: smooth; }
 
 .subtitle-block {
   display: flex; flex-direction: column; padding: 0.3px; margin-bottom: 0;
-  background: #2a2d31; border-left: 4px solid rgba(31, 125, 240, 0.918);
+  background: #151a24; border-left: 4px solid #3b82f6;
   border-radius: 4px; transition: all 0.3s ease; cursor: pointer;
 }
 .badge-orig ~ .subtitles-scroll .subtitle-block { border-left-color: #00aa8c; }
 .subtitle-block:hover { background: #353841; }
-.subtitle-block-active { background: #3a4a5a !important; box-shadow: 0 0 8px #00cc9999; transform: scale(1.02); }
+.subtitle-block-active { background: #3a4a5a !important; box-shadow: 0 0 8px #3b82f6; transform: scale(1.02); border-radius: 4px; }
 
-.timestamp { display: block; font-weight: bold; color: rgb(60, 145, 250); font-size: 0.85rem; margin-bottom: 4px; margin-left: 5px; flex-shrink: 0; }
-.subtitle-block-active .timestamp { color: #00ffbf; }
+.timestamp { display: block; font-weight: bold; color: #dddcdc; font-size: 0.85rem; margin-bottom: 4px; margin-left: 5px; flex-shrink: 0; }
+.subtitle-block-active .timestamp { color: #ffffff;}
 .testo { margin: 0 0 6px 5px; color: #fff; line-height: 1.4; font-size: 0.9rem; word-break: break-word; white-space: pre-line; }
 .block-actions { display: flex; justify-content: flex-end; gap: 6px; flex-shrink: 0; margin-top: 2px; }
 .btn-delete, .btn-edit { padding: 3px 10px; border: none; border-radius: 4px; font-size: 0.72rem; font-weight: 600; cursor: pointer; transition: all 0.2s ease; line-height: 1.5; }
-.btn-delete { background: rgba(180, 40, 40, 0.65); color: #ffd5d5; }
+.btn-delete { background: rgba(255, 0, 0, 0.549); color: #ffd5d5; }
 .btn-delete:hover { background: rgba(210, 40, 40, 1); color: #fff; transform: translateY(-1px); }
-.btn-edit { background: rgba(31, 125, 240, 0.918); color: #c8dcff; }
-.btn-edit:hover { background: rgba(31, 125, 240, 1); color: #fff; transform: translateY(-1px); }
-.subtitle-block-active .btn-edit { background: rgba(0, 204, 153, 0.75); color: #fff; }
-.subtitle-block-active .btn-edit:hover { background: #00cc99; color: #fff; }
+.btn-edit { background: #37474f ;color: #ffffff; }
+.btn-edit:hover { background: #455a64; color: #fff; transform: translateY(-1px); }
+.subtitle-block-active .btn-edit { background: #263136; color: #fff; }
+.subtitle-block-active .btn-edit:hover { background: #455a64; color: #fff; }
 
 .subtitle-separator { display: flex; align-items: center; gap: 6px; padding: 2px 4px; opacity: 0.6; transition: opacity 0.2s ease; }
 .subtitle-separator:hover { opacity: 1; }
 .separator-line { flex: 1; height: 1px; background: rgba(255, 255, 255, 0.12); }
 .separator-actions { display: flex; gap: 4px; flex-shrink: 0; }
 .btn-sep { padding: 1px 8px; font-size: 0.68rem; font-weight: 600; border: none; border-radius: 3px; cursor: pointer; line-height: 1.6; letter-spacing: 0.02em; transition: all 0.15s ease; white-space: nowrap; }
-.btn-add { background: rgba(31, 125, 240, 0.5); color: #c8dcff; border: 1px solid rgba(31, 125, 240, 0.918); }
-.btn-add:hover { background: rgba(31, 125, 240, 0.9); color: #fff; box-shadow: 0 2px 6px rgba(31, 125, 240, 0.4); }
-.btn-duplicate { background: rgba(139, 92, 246, 0.3); color: #c4b5fd; border: 1px solid rgba(139, 92, 246, 0.6); }
-.btn-duplicate:hover { background: rgba(139, 92, 246, 0.8); color: #fff; box-shadow: 0 2px 6px rgba(139, 92, 246, 0.4); }
-.btn-merge { background: rgba(0, 204, 153, 0.2); color: #00cc99; border: 1px solid rgba(0, 204, 153, 0.55); }
-.btn-merge:hover { background: rgba(0, 204, 153, 0.8); color: #fff; box-shadow: 0 2px 6px rgba(0, 204, 153, 0.4); }
+.btn-add { background: rgba(49, 57, 65, 0.5); color: #fafafa; border: 1px solid rgba(31, 125, 240, 0.918); }
+.btn-add:hover { background: rgba(49, 57, 65, 0.9); color: #fff; box-shadow: 0 2px 6px rgba(31, 125, 240, 0.4); }
+.btn-duplicate { background: rgba(49, 57, 65, 0.5); color: #fafafa; border: 1px solid rgba(139, 92, 246, 0.6); }
+.btn-duplicate:hover { background: rgba(49, 57, 65, 0.8); color: #fff; box-shadow: 0 2px 6px rgba(139, 92, 246, 0.4); }
+.btn-merge { background: rgba(49, 57, 65, 0.4); color: #fafafa; border: 1px solid rgba(0, 204, 153, 0.55); }
+.btn-merge:hover { background: rgba(49, 57, 65, 0.8); color: #fff; box-shadow: 0 2px 6px rgba(0, 204, 153, 0.4); }
 
-.video-area { flex: 1;background-color: rgb(33, 32, 32); display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; overflow: hidden; }
+.video-area { flex: 1;background-color: #1c2331; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; overflow: hidden; }
 .video-box { width: 90%; height: 90%; max-height: 90%; position: relative; display: flex; align-items: center; justify-content: center; overflow: hidden; }
 .video-box video { width: 100%; height: 100%; max-width: 100%; max-height: 100%; display: block; object-fit: contain; }
 /* Fullscreen: the video-box becomes the fullscreen root */
@@ -1181,7 +1190,7 @@ h3 { color: rgba(31, 125, 240, 0.918); }
 .subtitle-overlay { position: absolute; bottom: 35px; left: 50%; transform: translateX(-50%); max-width: 80%; text-align: center; pointer-events: none; z-index: 10; }
 .subtitle-text { display: inline-block; background: rgba(0, 0, 0, 0.8); color: #fff; padding: 8px 16px; border-radius: 4px; font-size: 0.9rem; line-height: 1.4; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.5); backdrop-filter: blur(4px); white-space: pre-line; }
 .timeline { background-color: #171819; overflow-x: auto; overflow-y: hidden; z-index: 1; }
-.zoomIcons { cursor: pointer; }
+.zoomIcons { cursor: pointer; background-color: #19202d;}
 .fullscreenSVG{
   position: absolute;
   right: 60px;
@@ -1246,17 +1255,17 @@ textarea.form-control { resize: vertical; min-height: 100px; }
 
 .btn-back {
   display: flex; align-items: center; gap: 6px; padding: 6px 18px;
-  background: transparent; color: #94a3b8; border: 1px solid #2d3748; border-radius: 5px;
+  background: transparent; color: #94a3b8; border: 1px ; border-radius: 5px;
   font-weight: 700; font-size: 0.9rem; cursor: pointer; transition: all 0.2s ease; letter-spacing: 0.03em;
 }
 .btn-back:hover { border-color: #4a5568; color: #e2e8f0; }
 
 .btn-undo {
   display: flex; align-items: center; gap: 6px; padding: 6px 18px;
-  background: transparent; color: #d88a0d; border: 1px solid #d88a0d; border-radius: 5px;
+  background: transparent; color: #3b82f6; border: 1px solid #3b82f6; border-radius: 5px;
   font-weight: 700; font-size: 0.9rem; cursor: pointer; transition: all 0.2s ease; letter-spacing: 0.03em;
 }
-.btn-undo:hover { border-color: #d9a34d; color: #c7a979; }
+.btn-undo:hover { border-color: #2f7af4; color: #2f7af4; }
 
 .resize-handle-h {
   height: 6px;
@@ -1318,140 +1327,40 @@ textarea.form-control { resize: vertical; min-height: 100px; }
   background: rgba(31, 125, 240, 0.8);
 }
 
-/* ─── Light mode: sidebar subtitle blocks ───────────────────────── */
-
-/* Blocco base */
-:global(body.light-mode) .subtitle-block {
-  background: #c8d8ee !important;
-  border-left-color: #1a56db !important;
+.zoom-slider {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 120px;
+  height: 4px;
+  border-radius: 2px;
+  background: #2d3748;
+  outline: none;
+  cursor: pointer;
+  transition: background 0.2s;
 }
-:global(body.light-mode) .subtitle-block:hover {
-  background: #b8cceb !important;
+.zoom-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: #3b82f6;
+  cursor: pointer;
+  box-shadow: 0 0 4px rgba(59, 130, 246, 0.5);
+  transition: background 0.2s, box-shadow 0.2s;
 }
-:global(body.light-mode) .subtitle-block-active {
-  background: #93c5fd !important;
-  box-shadow: 0 0 10px rgba(37, 99, 235, 0.6) !important;
+.zoom-slider::-webkit-slider-thumb:hover {
+  background: #60a5fa;
+  box-shadow: 0 0 8px rgba(59, 130, 246, 0.7);
 }
-
-/* Timestamp */
-:global(body.light-mode) .timestamp {
-  color: #1a3fbf !important;
+.zoom-slider::-moz-range-thumb {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: #3b82f6;
+  cursor: pointer;
+  border: none;
 }
-:global(body.light-mode) .subtitle-block-active .timestamp {
-  color: #0369a1 !important;
-}
-
-/* Testo */
-:global(body.light-mode) .testo {
-  color: #0f172a !important;
-}
-
-/* Track switcher active buttons */
-:global(body.light-mode) .track-btn.active {
-  color: #1a3fbf !important;
-  border-bottom-color: #1a3fbf !important;
-  background: rgba(26, 63, 191, 0.1) !important;
-}
-:global(body.light-mode) .track-btn:last-child.active {
-  color: #047857 !important;
-  border-bottom-color: #047857 !important;
-  background: rgba(4, 120, 87, 0.1) !important;
-}
-
-/* Badge */
-:global(body.light-mode) .badge-tran {
-  color: #1a3fbf !important;
-  background: rgba(26, 63, 191, 0.15) !important;
-}
-:global(body.light-mode) .badge-orig {
-  color: #047857 !important;
-  background: rgba(4, 120, 87, 0.15) !important;
-}
-
-/* btn-delete e btn-edit più vivaci */
-:global(body.light-mode) .btn-delete {
-  background: rgba(185, 28, 28, 0.75) !important;
-  color: #fff !important;
-}
-:global(body.light-mode) .btn-delete:hover {
-  background: rgba(185, 28, 28, 1) !important;
-}
-:global(body.light-mode) .btn-edit {
-  background: rgba(26, 63, 191, 0.85) !important;
-  color: #fff !important;
-}
-:global(body.light-mode) .btn-edit:hover {
-  background: rgba(26, 63, 191, 1) !important;
-}
-
-/* Video commands SVG in light mode */
-:global(body.light-mode) .video-commands svg {
-  color: #1e293b !important;
-  fill: #1e293b !important;
-}
-:global(body.light-mode) .video-commands svg:hover {
-  color: #1a3fbf !important;
-  fill: #1a3fbf !important;
-}
-
-/* Zoom icons in light mode */
-:global(body.light-mode) .zoomIcons svg {
-  color: #1e293b !important;
-  fill: #1e293b !important;
-}
-:global(body.light-mode) .zoomIcons svg:hover {
-  color: #1a3fbf !important;
-  fill: #1a3fbf !important;
-}
-
-/* Timeline resize handle in light mode */
-:global(body.light-mode) .resize-handle-h::after,
-:global(body.light-mode) .resize-handle-v::after {
-  background: rgba(0, 0, 0, 0.25) !important;
-}
-:global(body.light-mode) .resize-handle-h:hover,
-:global(body.light-mode) .resize-handle-v:hover {
-  background: rgba(26, 63, 191, 0.15) !important;
-}
-
-:global(body.light-mode) .btn-add {
-  background: rgba(26, 63, 191, 0.2) !important;
-  color: #1a3fbf !important;
-  border-color: rgba(26, 63, 191, 0.7) !important;
-}
-:global(body.light-mode) .btn-add:hover {
-  background: rgba(26, 63, 191, 0.85) !important;
-  color: #fff !important;
-  box-shadow: 0 2px 6px rgba(26, 63, 191, 0.45) !important;
-}
-
-:global(body.light-mode) .btn-duplicate {
-  background: rgba(109, 40, 217, 0.15) !important;
-  color: #5b21b6 !important;
-  border-color: rgba(109, 40, 217, 0.6) !important;
-}
-:global(body.light-mode) .btn-duplicate:hover {
-  background: rgba(109, 40, 217, 0.85) !important;
-  color: #fff !important;
-  box-shadow: 0 2px 6px rgba(109, 40, 217, 0.45) !important;
-}
-
-:global(body.light-mode) .btn-merge {
-  background: rgba(4, 120, 87, 0.15) !important;
-  color: #047857 !important;
-  border-color: rgba(4, 120, 87, 0.6) !important;
-}
-:global(body.light-mode) .btn-merge:hover {
-  background: rgba(4, 120, 87, 0.85) !important;
-  color: #fff !important;
-  box-shadow: 0 2px 6px rgba(4, 120, 87, 0.45) !important;
-}
-
-/* separator line più visibile */
-:global(body.light-mode) .separator-line {
-  background: rgba(0, 0, 0, 0.2) !important;
-}
-
 :deep(video::-webkit-media-controls-fullscreen-button) {
   display: none;
 }
