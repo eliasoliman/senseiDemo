@@ -17,7 +17,18 @@ const handleLogin = async () => {
   loading.value = true;
   errorMsg.value = '';
 
+
   try {
+
+    
+    if (!username.value) {
+      errorMsg.value = "Please enter your username.";
+      return;
+    }
+    if (!password.value) {
+      errorMsg.value = "Please enter your password.";
+      return;
+    }
     const params = new URLSearchParams();
     params.append('username', username.value);
     params.append('password', password.value);
@@ -43,10 +54,10 @@ const handleLogin = async () => {
   } catch (err) {
     if (err.response) {
       errorMsg.value = err.response.status === 401
-        ? "Credenziali errate. Riprova."
-        : "Errore del server: " + (err.response.data.detail || "Riprova");
+        ? "Invalid credentials. Please try again."
+        : "Server error: " + (err.response.data.detail || "Please try again");
     } else {
-      errorMsg.value = "Impossibile connettersi al server.";
+      errorMsg.value = "Unable to connect to the server.";
     }
   } finally {
     loading.value = false;
@@ -63,17 +74,16 @@ const handleLogin = async () => {
     <main class="auth-container">
       <div class="auth-card">
         <div class="auth-header">
-          <h1>Bentornato!</h1>
-          <p class="subtitle">Accedi alla community di Sensei Subtitles</p>
+          <h1>Welcome!</h1>
         </div>
 
-        <form @submit.prevent="handleLogin" class="auth-form">
+        <form @submit.prevent="handleLogin" class="auth-form" novalidate>
           <div class="input-group">
             <label>Username</label>
             <input 
               v-model="username" 
               type="text" 
-              placeholder="Il tuo username" 
+              placeholder="Your username" 
               required 
             />
           </div>
@@ -89,7 +99,7 @@ const handleLogin = async () => {
           </div>
 
           <button type="submit" :disabled="loading" class="btn-submit">
-            {{ loading ? 'Accesso in corso...' : 'Log in' }}
+            {{ loading ? 'Logging in...' : 'Log in' }}
           </button>
 
           <Transition name="fade">

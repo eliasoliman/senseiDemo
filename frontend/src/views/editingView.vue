@@ -168,6 +168,36 @@ const parseSrtTimestampEnd = (timestampStr) => {
   return 0
 }
 
+const getCharsPerSecond = (subtitle) => {
+  const start = parseSrtTimestamp(subtitle.timestamp)
+  const end = parseSrtTimestampEnd(subtitle.timestamp)
+  const duration = end - start
+  if (duration <= 0) return 0
+  const chars = (subtitle.testo || '').replace(/\s/g, '').length
+  return chars / duration
+}
+
+const getSubtitleWarnings = (subtitle) => {
+  const warnings = []
+  const lines = (subtitle.testo || '').split('\n')
+  
+  if (lines.length > 2) {
+    warnings.push(`Too many lines: ${lines.length} found (max 2)`)
+  }
+  
+  lines.forEach((line, i) => {
+    if (line.length > 42) {
+      warnings.push(`Line ${i + 1} too long: ${line.length} chars (max 42)`)
+    }
+  })
+  
+  if (getCharsPerSecond(subtitle) > 22) {
+    warnings.push(`CPS too high: ${getCharsPerSecond(subtitle).toFixed(1)} cps found (max 22)`)
+  }
+  
+  return warnings
+}
+
 const formatSrtTimestamp = (seconds) => {
   const h = Math.floor(seconds / 3600)
   const m = Math.floor((seconds % 3600) / 60)
@@ -512,7 +542,8 @@ const openEditModal = (index) => {
   const arr = sidebarSubtitles.value
   editForm.value = { timestamp: arr[index].timestamp, testo: arr[index].testo }
   showModal.value = true
-  if (videoPlayer.value && !videoPlayer.value.paused) videoPlayer.value.pause()
+  handleSidebarClick(index)
+  if (videoPlayer.value && !videoPlayer.value.paused)  videoPlayer.value.pause()
 }
 
 const closeModal = () => {
@@ -852,6 +883,23 @@ watch(videoPlayer, (newPlayer) => { if (newPlayer) setupVideoSync() })
                 <span class="timestamp">{{ subtitle.timestamp }}</span>
                 <p class="testo">{{ subtitle.testo }}</p>
                 <div class="block-actions">
+                  <div v-if="getSubtitleWarnings(subtitle).length > 0" class="cps-warning-wrapper">
+                    <svg
+                      xmlns="http://www.w3.org/2000/svg"
+                      width="16" height="16"
+                      fill="#f59e0b"
+                      viewBox="0 0 16 16"
+                      class="cps-warning-icon"
+                    >
+                      <path d="M7.938 2.016A.13.13 0 0 1 8.002 2a.13.13 0 0 1 .063.016.15.15 0 0 1 .054.057l6.857 11.667c.036.06.035.124.002.183a.2.2 0 0 1-.054.06.1.1 0 0 1-.066.017H1.146a.1.1 0 0 1-.066-.017.2.2 0 0 1-.054-.06.18.18 0 0 1 .002-.183L7.884 2.073a.15.15 0 0 1 .054-.057m1.044-.45a1.13 1.13 0 0 0-1.96 0L.165 13.233c-.457.778.091 1.767.98 1.767h13.713c.889 0 1.438-.99.98-1.767z"/>
+                      <path d="M7.002 12a1 1 0 1 1 2 0 1 1 0 0 1-2 0M7.1 5.995a.905.905 0 1 1 1.8 0l-.35 3.507a.552.552 0 0 1-1.1 0z"/>
+                    </svg>
+                    <div class="cps-tooltip">
+                      <div v-for="(warning, i) in getSubtitleWarnings(subtitle)" :key="i" class="cps-tooltip-line">
+                        ⚠ {{ warning }}
+                      </div>
+                    </div>
+                  </div>
                   <button class="btn-delete" @click.stop="deleteSubtitle(index)" title="Elimina sottotitolo">Delete</button>
                   <button class="btn-edit" @click.stop="openEditModal(index)">Edit</button>
                 </div>
@@ -1154,6 +1202,61 @@ watch(videoPlayer, (newPlayer) => { if (newPlayer) setupVideoSync() })
 .btn-duplicate:hover { background: rgba(49, 57, 65, 0.8); color: #fff; box-shadow: 0 2px 6px rgba(139, 92, 246, 0.4); }
 .btn-merge { background: rgba(49, 57, 65, 0.4); color: #fafafa; border: 1px solid rgba(0, 204, 153, 0.55); }
 .btn-merge:hover { background: rgba(49, 57, 65, 0.8); color: #fff; box-shadow: 0 2px 6px rgba(0, 204, 153, 0.4); }
+
+.cps-warning-icon {
+  align-self: center;
+  flex-shrink: 0;
+  cursor: default;
+  filter: drop-shadow(0 0 3px rgba(245, 158, 11, 0.4));
+}
+
+.cps-warning-wrapper {
+  position: relative;
+  display: flex;
+  align-items: center;
+  align-self: center;
+  flex-shrink: 0;
+}
+
+.cps-tooltip {
+  display: none;
+  position: absolute;
+  bottom: calc(100% + 8px);
+  right: 0;
+  background: #1e2128;
+  border: 1px solid #f59e0b;
+  color: #fde68a;
+  font-size: 0.72rem;
+  line-height: 1.5;
+  padding: 7px 10px;
+  border-radius: 6px;
+  white-space: nowrap;
+  z-index: 100;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.5);
+  pointer-events: none;
+}
+
+.cps-tooltip::after {
+  content: '';
+  position: absolute;
+  top: 100%;
+  right: 6px;
+  border: 5px solid transparent;
+  border-top-color: #f59e0b;
+}
+
+.cps-warning-wrapper:hover .cps-tooltip {
+  display: block;
+}
+
+.cps-tooltip-line {
+  padding: 1px 0;
+}
+.cps-tooltip-line + .cps-tooltip-line {
+  border-top: 1px solid rgba(245, 158, 11, 0.2);
+  margin-top: 4px;
+  padding-top: 4px;
+}
 
 .video-area { flex: 1;background-color: #1c2331; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; overflow: hidden; }
 .video-box { width: 90%; height: 90%; max-height: 90%; position: relative; display: flex; align-items: center; justify-content: center; overflow: hidden; }
