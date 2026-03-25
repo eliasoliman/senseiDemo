@@ -1155,6 +1155,7 @@ watch(videoPlayer, (newPlayer) => { if (newPlayer) setupVideoSync() })
 .logo_photo{
   height: 40px;
   width: 40px;
+  margin-right: 12px;
 }
 .nav { display: flex; gap: 1rem; }
 
