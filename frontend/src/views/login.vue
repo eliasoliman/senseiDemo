@@ -68,7 +68,9 @@ const handleLogin = async () => {
 <template>
   <div class="sensei-wrapper">
     <header class="position-absolute top-0 start-0 end-0 p-3 d-flex justify-content-between align-items-center">
-      <h1 class="mb-0">Sensei</h1>
+      <div class="logo">
+        <img src="/FBK_colour_transp.png" alt="FBK Logo" class="logo_photo">
+        Sensei</div>
     </header>
 
     <main class="auth-container">
@@ -139,6 +141,11 @@ const handleLogin = async () => {
   font-size: 1.5rem;
   font-weight: 700;
   letter-spacing: -0.5px;
+}
+
+.logo_photo{
+  height: 40px;
+  width: 40px;
 }
 
 .glass-btn:hover {
