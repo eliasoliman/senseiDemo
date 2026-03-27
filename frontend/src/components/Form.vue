@@ -491,7 +491,7 @@ async function createProject() {
     
     console.log('[NewProject] Job avviato, ID:', jobId, '| Risposta completa:', conversionJob.data);
 
-    const maxAttempts = 3000;
+    const maxAttempts = 12000;
     const pollInterval = 1000;
     let conversionCompleted = false;
     let lastTokenRefresh = Date.now();
