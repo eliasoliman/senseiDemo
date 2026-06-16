@@ -410,8 +410,12 @@ const handleExport = () => {
   const pName = currentProject.value?.name || 'project'
   const today = new Date()
   const date = `${String(today.getDate()).padStart(2, '0')}-${String(today.getMonth() + 1).padStart(2, '0')}-${today.getFullYear()}`
-  if (hasTranslation.value) downloadSrt(arrayToSrt(tranSubtitles.value), `${pName}_${targetLanguage.value}_${date}.srt`)
-  if (hasOriginal.value) downloadSrt(arrayToSrt(subtitles.value), `${pName}_${sourceLanguage.value}_${date}.srt`)
+  if (hasTranslation.value) {
+    downloadSrt(arrayToSrt(tranSubtitles.value), `${pName}_${targetLanguage.value || 'trg'}_${date}.srt`)
+  }
+  if (hasOriginal.value) {
+    downloadSrt(arrayToSrt(subtitles.value), `${pName}_${sourceLanguage.value || 'src'}_${date}.srt`)
+  }
 }
 
 const scrollSidebarToActive = () => {
